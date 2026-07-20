@@ -24,27 +24,48 @@ The Android fork is the starting point because it already contains mobile UI, to
 
 No commercial Daggerfall game data may be committed to this repository. Users will eventually import their own legally obtained game data into the application sandbox.
 
-## Primary execution environment
+## Current execution strategy
 
-The primary Gate 1 through Gate 3 environment is the GitHub-hosted `macos-15` runner defined in `.github/workflows/ios-github-runner.yml`.
+The ordinary Unity Build Automation iOS configuration requires an Apple signing credential set. The project owner does not currently have an Apple Developer Program membership, so the normal signed-iOS target is intentionally not used for this bootstrap milestone.
 
-That workflow:
+The active experiment uses a Unity Build Automation **macOS Standard** target as a licensed carrier environment. Its repository pre-build script attempts the bounded Gate 1 through Gate 3 work before the normal macOS carrier build:
 
-1. Verifies the pinned baseline ancestry and exact Unity version.
-2. Installs the official Unity CLI beta.
-3. Installs Unity `2022.3.62f3` with iOS Build Support.
-4. Activates the current named-user Unity Personal entitlement on the runner.
-5. Runs `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine`.
-6. Verifies the generated Xcode project.
-7. Compiles the generic `iphoneos` target with signing disabled.
-8. Uploads the Xcode project and build logs as workflow evidence.
+1. Verify that Build Automation provisioned Unity `2022.3.62f3` on a macOS builder.
+2. Verify that the provisioned Editor includes iOS Build Support.
+3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine` to export `Build/iOS/Unity-iPhone.xcodeproj`.
+4. Compile the generic `iphoneos` target with signing disabled.
+5. Package the Xcode project and logs under Build Automation's `extra_data` artifacts.
 
-The workflow requires these repository Actions secrets:
+This is an experimental use of supported Build Automation script hooks. It does not claim that a macOS target is an iOS distribution build. It exists only to determine whether the licensed builder image can perform the unsigned bootstrap gates without Apple credentials.
 
-- `UNITY_USERNAME`: the email address used for the Unity ID
-- `UNITY_PASSWORD`: the Unity ID password
+### Unity Build Automation configuration
 
-Current Unity Personal activations are entitlement-based and normally create `UnityEntitlementLicense.xml` on a signed-in workstation. This file must not be copied into the repository or used as a `UNITY_LICENSE` secret. The workflow performs named-user activation directly on the ephemeral macOS runner and returns the entitlement during its post-action cleanup.
+Create a configuration with:
+
+- Target name: `ios-bootstrap-unsigned-via-macos`
+- Branch: `port/ios-bootstrap`
+- Project subfolder path: blank
+- Platform: macOS
+- Auto-detect Unity version: enabled
+- Detected Unity version: `2022.3.62f3`
+- Builder: macOS Standard
+- Scheduling and auto-build: disabled for the first experiment
+- Pre-build script path: `scripts/uba-prebuild-ios.sh`
+- Post-build script path: `scripts/uba-postbuild-ios.sh`
+
+Do not add Apple signing credentials to this carrier target.
+
+### Bounded experiment outcomes
+
+- If the managed Editor includes iOS Build Support, the script proceeds to the first actual Unity import or iOS native blocker.
+- If iOS Build Support is absent, the script stops explicitly and records that fact. Do not silently install unrelated toolchains or broaden the milestone.
+- A successful unsigned compile does not produce an installable IPA and does not authorize signing, packaging, installation, runtime, mod, or voxel work.
+
+## Retired GitHub-hosted licensing experiment
+
+The GitHub-hosted macOS workflow proved that Unity `2022.3.62f3`, iOS Build Support, and Unity Hub can be installed on an ephemeral runner. It also proved that current Unity Personal activation requires an interactive signed-in user session. The official CLI reported `NOT_SIGNED_IN`; Unity ID email/password secrets could not activate the Personal entitlement headlessly.
+
+That workflow remains historical evidence only. `UNITY_USERNAME` and `UNITY_PASSWORD` repository secrets are not required for the current Build Automation carrier experiment and should not be retained.
 
 ## Bootstrap gates
 
@@ -60,7 +81,7 @@ Pass conditions:
 
 Pass conditions:
 
-- The project imports in Unity `2022.3.62f3` on the GitHub macOS runner.
+- The project imports in Unity `2022.3.62f3` on the managed macOS builder.
 - Editor compilation completes without unexplained errors.
 - Any Android-only compilation failure is isolated and attributed before modification.
 
@@ -81,7 +102,7 @@ Pass conditions:
 
 ## Local reproduction fallback
 
-A physical Mac is not required for the primary workflow. The following commands remain available for reproducing a runner failure on any macOS host with Unity `2022.3.62f3` and iOS Build Support installed.
+The following commands remain available on any macOS host with Unity `2022.3.62f3` and iOS Build Support installed.
 
 Export the Unity project:
 
@@ -102,11 +123,10 @@ Both scripts accept environment overrides. See the scripts for variable names an
 Stop and record evidence rather than broadening the work when:
 
 - Unity cannot import under the pinned editor version.
+- The managed macOS target lacks iOS Build Support.
 - An Android-only dependency lacks an iOS implementation.
 - A native plugin requires replacement or source-level porting.
 - Xcode export succeeds but native compilation fails for an unexplained reason.
 - Progress would require signing, provisioning, installation, runtime gameplay work, mod compatibility work, or voxel-character work.
 
 Those are later gated milestones. A successful bootstrap does not silently authorize every subsequent ambition humans can fit into one repository.
-
-<!-- Licensing diagnostic synchronization marker: 2026-07-21. -->
