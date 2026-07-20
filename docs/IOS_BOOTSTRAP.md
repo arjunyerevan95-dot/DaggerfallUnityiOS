@@ -24,6 +24,26 @@ The Android fork is the starting point because it already contains mobile UI, to
 
 No commercial Daggerfall game data may be committed to this repository. Users will eventually import their own legally obtained game data into the application sandbox.
 
+## Primary execution environment
+
+The primary Gate 1 through Gate 3 environment is the GitHub-hosted `macos-15` runner defined in `.github/workflows/ios-github-runner.yml`.
+
+That workflow:
+
+1. Verifies the pinned baseline ancestry and exact Unity version.
+2. Installs and caches Unity `2022.3.62f3` with iOS Build Support through GameCI.
+3. Runs `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine`.
+4. Verifies the generated Xcode project.
+5. Compiles the generic `iphoneos` target with signing disabled.
+6. Uploads the Xcode project and build logs as workflow evidence.
+
+The workflow accepts either:
+
+- `UNITY_LICENSE`, or
+- `UNITY_SERIAL`, `UNITY_EMAIL`, and `UNITY_PASSWORD`
+
+as repository Actions secrets. It fails explicitly before editor installation when neither credential form is available.
+
 ## Bootstrap gates
 
 ### Gate 0: provenance
@@ -38,7 +58,7 @@ Pass conditions:
 
 Pass conditions:
 
-- The project imports in Unity `2022.3.62f3` on macOS.
+- The project imports in Unity `2022.3.62f3` on the GitHub macOS runner.
 - Editor compilation completes without unexplained errors.
 - Any Android-only compilation failure is isolated and attributed before modification.
 
@@ -57,9 +77,11 @@ Pass conditions:
 - `xcodebuild` compiles the generated project for generic `iphoneos` with signing disabled.
 - The first reproducible native blocker is documented if compilation fails.
 
-## Commands
+## Local reproduction fallback
 
-Export the Unity project on a macOS host with Unity iOS Build Support installed:
+A physical Mac is not required for the primary workflow. The following commands remain available for reproducing a runner failure on any macOS host with Unity `2022.3.62f3` and iOS Build Support installed.
+
+Export the Unity project:
 
 ```bash
 bash scripts/export-ios.sh
