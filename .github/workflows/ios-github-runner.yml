@@ -65,10 +65,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL https://public-cdn.cloud.unity3d.com/hub/prod/cli/install.sh | UNITY_CLI_CHANNEL=beta bash
+          mkdir -p Build/logs
+          curl -fsSL https://public-cdn.cloud.unity3d.com/hub/prod/cli/install.sh \
+            | UNITY_CLI_CHANNEL=beta bash 2>&1 \
+            | tee Build/logs/unity-cli-install.log
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          unity --version
+          unity --version 2>&1 | tee -a Build/logs/unity-cli-install.log
 
       - name: Install Unity editor and iOS Build Support
         shell: bash
