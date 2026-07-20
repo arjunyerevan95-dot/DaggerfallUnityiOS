@@ -14,26 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unsigned-ios-build:
-    name: Unity export and unsigned Xcode compile
+  licensing-diagnostic:
+    name: Inspect Unity CLI licensing commands
     runs-on: macos-14
-    timeout-minutes: 120
+    timeout-minutes: 20
 
     env:
-      IOS_EXPORT_PATH: ${{ github.workspace }}/Build/iOS
-      IOS_DERIVED_DATA_PATH: ${{ github.workspace }}/Build/DerivedData-iOS
-      IOS_XCODE_LOG: ${{ github.workspace }}/Build/logs/ios-xcodebuild.log
       UNITY_USERNAME: ${{ secrets.UNITY_USERNAME }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-      UNITY_VERSION: 2022.3.62f3
-      UNITY_BIN: /Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity
-      UNITY_HUB_BIN: /Applications/Unity Hub.app/Contents/MacOS/Unity Hub
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          lfs: true
           fetch-depth: 0
 
       - name: Verify pinned baseline ancestry
@@ -54,14 +47,6 @@ jobs:
           fi
           echo 'Unity named-user credentials are configured.'
 
-      - name: Cache Unity project Library
-        uses: actions/cache@v4
-        with:
-          path: Library
-          key: unity-library-macos-ios-2022.3.62f3-${{ hashFiles('Packages/manifest.json', 'Packages/packages-lock.json', 'ProjectSettings/ProjectVersion.txt') }}
-          restore-keys: |
-            unity-library-macos-ios-2022.3.62f3-
-
       - name: Install Unity CLI
         shell: bash
         run: |
@@ -78,95 +63,40 @@ jobs:
           fi
 
           echo "UNITY_CLI_BIN=$unity_cli_bin" >> "$GITHUB_ENV"
-          echo "$(dirname "$unity_cli_bin")" >> "$GITHUB_PATH"
           "$unity_cli_bin" --version 2>&1 | tee -a Build/logs/unity-cli-install.log
 
-      - name: Install Unity editor and iOS Build Support
+      - name: Capture authoritative licensing help
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p Build/logs
-          if [[ ! -x "$UNITY_BIN" ]]; then
-            "$UNITY_CLI_BIN" install "$UNITY_VERSION" \
-              -m ios \
-              --accept-eula \
-              --non-interactive \
-              --yes 2>&1 | tee Build/logs/unity-editor-install.log
-          fi
-          test -x "$UNITY_BIN"
-          "$UNITY_BIN" -version 2>&1 | tee -a Build/logs/unity-editor-install.log
+          {
+            echo '=== unity --help ==='
+            "$UNITY_CLI_BIN" --help
+            echo
+            echo '=== unity auth login --help ==='
+            "$UNITY_CLI_BIN" auth login --help
+            echo
+            echo '=== unity license --help ==='
+            "$UNITY_CLI_BIN" license --help
+            echo
+            echo '=== unity license activate --help ==='
+            "$UNITY_CLI_BIN" license activate --help
+            echo
+            echo '=== unity license status --help ==='
+            "$UNITY_CLI_BIN" license status --help
+            echo
+            echo '=== unity license return --help ==='
+            "$UNITY_CLI_BIN" license return --help
+          } 2>&1 | tee Build/logs/unity-cli-licensing-help.log
 
-      - name: Install Unity Hub licensing client
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -x "$UNITY_HUB_BIN" ]]; then
-            brew install --cask unity-hub 2>&1 | tee Build/logs/unity-hub-install.log
-          fi
-          test -x "$UNITY_HUB_BIN"
-          find "/Applications/Unity Hub.app" -type f -name 'Unity.Licensing.Client' -print \
-            | tee -a Build/logs/unity-hub-install.log
+          echo 'Licensing syntax captured. This diagnostic run intentionally stops before activation.' >&2
+          exit 42
 
-      - name: Install pinned Unity licensing CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install --global @rage-against-the-pixel/unity-cli@2.0.0 \
-            2>&1 | tee Build/logs/unity-licensing-cli-install.log
-          unity-cli --version 2>&1 | tee -a Build/logs/unity-licensing-cli-install.log
-
-      - name: Activate Unity Personal license
-        shell: bash
-        run: |
-          set -euo pipefail
-          unity-cli activate-license \
-            --license personal \
-            --email "$UNITY_USERNAME" \
-            --password "$UNITY_PASSWORD" \
-            2>&1 | tee Build/logs/unity-license-activation.log
-          unity-cli license-context 2>&1 | tee -a Build/logs/unity-license-activation.log
-
-      - name: Export unsigned iOS Xcode project
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p Build/logs
-          "$UNITY_BIN" \
-            -batchmode \
-            -nographics \
-            -quit \
-            -projectPath "$GITHUB_WORKSPACE" \
-            -executeMethod DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine \
-            -logFile "$GITHUB_WORKSPACE/Build/logs/unity-ios-export.log"
-
-      - name: Validate Unity export
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -d Build/iOS/Unity-iPhone.xcodeproj
-          test -f Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj
-          xcodebuild -version
-
-      - name: Compile unsigned iphoneos target
-        shell: bash
-        run: bash scripts/build-ios-xcode.sh
-
-      - name: Return Unity Personal license
-        if: always()
-        shell: bash
-        run: |
-          if command -v unity-cli >/dev/null 2>&1; then
-            unity-cli return-license --license personal \
-              2>&1 | tee -a Build/logs/unity-license-activation.log || true
-          fi
-
-      - name: Upload bootstrap evidence
+      - name: Upload licensing diagnostic
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: daggerfall-unity-ios-bootstrap-${{ github.run_number }}
-          path: |
-            Build/iOS
-            Build/logs
-          if-no-files-found: warn
+          name: daggerfall-unity-licensing-diagnostic-${{ github.run_number }}
+          path: Build/logs
+          if-no-files-found: error
           retention-days: 7
