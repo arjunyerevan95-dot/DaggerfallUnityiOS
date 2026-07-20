@@ -105,7 +105,7 @@ namespace DaggerfallUnityIOS.Editor
             PlayerSettings.iOS.targetDevice = iOSTargetDevice.iPhoneAndiPad;
             PlayerSettings.iOS.targetOSVersionString = MinimumIOSVersion;
             PlayerSettings.iOS.requiresPersistentWiFi = false;
-            PlayerSettings.iOS.statusBarHidden = true;
+            PlayerSettings.statusBarHidden = true;
 
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
             PlayerSettings.allowedAutorotateToPortrait = false;
@@ -119,7 +119,7 @@ namespace DaggerfallUnityIOS.Editor
                 BuildTarget.iOS,
                 new[] { GraphicsDeviceType.Metal });
 
-            EditorUserBuildSettings.iOSBuildConfigType = iOSBuildType.Release;
+            EditorUserBuildSettings.iOSXcodeBuildConfig = XcodeBuildConfig.Release;
         }
     }
 }
