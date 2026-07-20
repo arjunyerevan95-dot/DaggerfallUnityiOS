@@ -69,17 +69,23 @@ jobs:
           curl -fsSL https://public-cdn.cloud.unity3d.com/hub/prod/cli/install.sh \
             | UNITY_CLI_CHANNEL=beta bash 2>&1 \
             | tee Build/logs/unity-cli-install.log
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$PATH"
-          unity --version 2>&1 | tee -a Build/logs/unity-cli-install.log
+
+          unity_cli_bin="$(find "$HOME" -type f -name unity -perm -111 2>/dev/null | head -n 1)"
+          if [[ -z "$unity_cli_bin" ]]; then
+            echo 'Unity CLI installer completed but no executable named unity was found under HOME.' >&2
+            exit 3
+          fi
+
+          echo "UNITY_CLI_BIN=$unity_cli_bin" >> "$GITHUB_ENV"
+          echo "$(dirname "$unity_cli_bin")" >> "$GITHUB_PATH"
+          "$unity_cli_bin" --version 2>&1 | tee -a Build/logs/unity-cli-install.log
 
       - name: Install Unity editor and iOS Build Support
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
           if [[ ! -x "$UNITY_BIN" ]]; then
-            unity install "$UNITY_VERSION" -m ios
+            "$UNITY_CLI_BIN" install "$UNITY_VERSION" -m ios
           fi
           test -x "$UNITY_BIN"
           "$UNITY_BIN" -version
