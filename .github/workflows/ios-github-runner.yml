@@ -27,6 +27,7 @@ jobs:
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
       UNITY_VERSION: 2022.3.62f3
       UNITY_BIN: /Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity
+      UNITY_HUB_BIN: /Applications/Unity Hub.app/Contents/MacOS/Unity Hub
 
     steps:
       - name: Checkout
@@ -95,6 +96,17 @@ jobs:
           test -x "$UNITY_BIN"
           "$UNITY_BIN" -version 2>&1 | tee -a Build/logs/unity-editor-install.log
 
+      - name: Install Unity Hub licensing client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -x "$UNITY_HUB_BIN" ]]; then
+            brew install --cask unity-hub 2>&1 | tee Build/logs/unity-hub-install.log
+          fi
+          test -x "$UNITY_HUB_BIN"
+          find "/Applications/Unity Hub.app" -type f -name 'Unity.Licensing.Client' -print \
+            | tee -a Build/logs/unity-hub-install.log
+
       - name: Install pinned Unity licensing CLI
         shell: bash
         run: |
@@ -111,7 +123,7 @@ jobs:
             --license personal \
             --email "$UNITY_USERNAME" \
             --password "$UNITY_PASSWORD" \
-            --verbose 2>&1 | tee Build/logs/unity-license-activation.log
+            2>&1 | tee Build/logs/unity-license-activation.log
           unity-cli license-context 2>&1 | tee -a Build/logs/unity-license-activation.log
 
       - name: Export unsigned iOS Xcode project
@@ -144,7 +156,7 @@ jobs:
         shell: bash
         run: |
           if command -v unity-cli >/dev/null 2>&1; then
-            unity-cli return-license --license personal --verbose \
+            unity-cli return-license --license personal \
               2>&1 | tee -a Build/logs/unity-license-activation.log || true
           fi
 
