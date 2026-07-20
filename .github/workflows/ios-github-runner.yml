@@ -14,14 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  licensing-diagnostic:
-    name: Inspect Unity CLI licensing commands
+  personal-license-probe:
+    name: Probe official Unity Personal activation
     runs-on: macos-14
     timeout-minutes: 20
-
-    env:
-      UNITY_USERNAME: ${{ secrets.UNITY_USERNAME }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -36,16 +32,6 @@ jobs:
           pinned='0fa65294523a132a0e5389d125f58d6566a1e815'
           git merge-base --is-ancestor "$pinned" HEAD
           grep -F 'm_EditorVersion: 2022.3.62f3' ProjectSettings/ProjectVersion.txt
-
-      - name: Validate Unity named-user credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${UNITY_USERNAME:-}" || -z "${UNITY_PASSWORD:-}" ]]; then
-            echo 'Unity Personal CI activation requires repository Actions secrets UNITY_USERNAME and UNITY_PASSWORD.' >&2
-            exit 2
-          fi
-          echo 'Unity named-user credentials are configured.'
 
       - name: Install Unity CLI
         shell: bash
@@ -65,38 +51,73 @@ jobs:
           echo "UNITY_CLI_BIN=$unity_cli_bin" >> "$GITHUB_ENV"
           "$unity_cli_bin" --version 2>&1 | tee -a Build/logs/unity-cli-install.log
 
-      - name: Capture authoritative licensing help
+      - name: Install Unity Hub licensing client
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo '=== unity --help ==='
-            "$UNITY_CLI_BIN" --help
-            echo
-            echo '=== unity auth login --help ==='
-            "$UNITY_CLI_BIN" auth login --help
-            echo
-            echo '=== unity license --help ==='
-            "$UNITY_CLI_BIN" license --help
-            echo
-            echo '=== unity license activate --help ==='
-            "$UNITY_CLI_BIN" license activate --help
-            echo
-            echo '=== unity license status --help ==='
-            "$UNITY_CLI_BIN" license status --help
-            echo
-            echo '=== unity license return --help ==='
-            "$UNITY_CLI_BIN" license return --help
-          } 2>&1 | tee Build/logs/unity-cli-licensing-help.log
+          brew install --cask unity-hub 2>&1 | tee Build/logs/unity-hub-install.log
+          test -x "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
 
-          echo 'Licensing syntax captured. This diagnostic run intentionally stops before activation.' >&2
-          exit 42
+      - name: Probe official Personal activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import sys
 
-      - name: Upload licensing diagnostic
+          command = [
+              os.environ['UNITY_CLI_BIN'],
+              '--non-interactive',
+              '--format',
+              'json',
+              'license',
+              'activate',
+              '--personal',
+              '--accept-eula',
+          ]
+
+          try:
+              completed = subprocess.run(
+                  command,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+                  timeout=120,
+                  check=False,
+              )
+              output = completed.stdout or ''
+              exit_code = completed.returncode
+          except subprocess.TimeoutExpired as exc:
+              output = (exc.stdout or '')
+              if isinstance(output, bytes):
+                  output = output.decode('utf-8', errors='replace')
+              output += '\nActivation timed out after 120 seconds.\n'
+              exit_code = 124
+
+          os.makedirs('Build/logs', exist_ok=True)
+          with open('Build/logs/unity-personal-activation-probe.log', 'w', encoding='utf-8') as handle:
+              handle.write(output)
+              handle.write(f'\nEXIT_CODE={exit_code}\n')
+
+          print(output)
+          print(f'EXIT_CODE={exit_code}')
+          sys.exit(0 if exit_code == 0 else 42)
+          PY
+
+      - name: Capture license status
+        if: always()
+        shell: bash
+        run: |
+          "$UNITY_CLI_BIN" --non-interactive --format json license status \
+            2>&1 | tee Build/logs/unity-license-status.log || true
+
+      - name: Upload Personal activation probe
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: daggerfall-unity-licensing-diagnostic-${{ github.run_number }}
+          name: daggerfall-unity-personal-activation-probe-${{ github.run_number }}
           path: Build/logs
           if-no-files-found: error
           retention-days: 7
