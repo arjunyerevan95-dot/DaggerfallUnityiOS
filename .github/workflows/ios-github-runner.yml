@@ -84,11 +84,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p Build/logs
           if [[ ! -x "$UNITY_BIN" ]]; then
-            "$UNITY_CLI_BIN" install "$UNITY_VERSION" -m ios
+            "$UNITY_CLI_BIN" install "$UNITY_VERSION" \
+              -m ios \
+              --accept-eula \
+              --non-interactive \
+              --yes 2>&1 | tee Build/logs/unity-editor-install.log
           fi
           test -x "$UNITY_BIN"
-          "$UNITY_BIN" -version
+          "$UNITY_BIN" -version 2>&1 | tee -a Build/logs/unity-editor-install.log
 
       # Pinned because this action receives Unity account credentials.
       # Source revision corresponds to activate-unity-license v2.2.2.
