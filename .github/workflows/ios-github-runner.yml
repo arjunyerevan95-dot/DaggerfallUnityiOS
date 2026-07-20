@@ -95,15 +95,24 @@ jobs:
           test -x "$UNITY_BIN"
           "$UNITY_BIN" -version 2>&1 | tee -a Build/logs/unity-editor-install.log
 
-      # Pinned because this action receives Unity account credentials.
-      # Source revision corresponds to activate-unity-license v2.2.2.
+      - name: Install pinned Unity licensing CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @rage-against-the-pixel/unity-cli@2.0.0 \
+            2>&1 | tee Build/logs/unity-licensing-cli-install.log
+          unity-cli --version 2>&1 | tee -a Build/logs/unity-licensing-cli-install.log
+
       - name: Activate Unity Personal license
-        uses: buildalon/activate-unity-license@98495fc17d167bb6c810423eecd66438c44d994b
-        with:
-          license: personal
-          username: ${{ secrets.UNITY_USERNAME }}
-          password: ${{ secrets.UNITY_PASSWORD }}
-          license-version: 6.x
+        shell: bash
+        run: |
+          set -euo pipefail
+          unity-cli activate-license \
+            --license personal \
+            --email "$UNITY_USERNAME" \
+            --password "$UNITY_PASSWORD" \
+            --verbose 2>&1 | tee Build/logs/unity-license-activation.log
+          unity-cli license-context 2>&1 | tee -a Build/logs/unity-license-activation.log
 
       - name: Export unsigned iOS Xcode project
         shell: bash
@@ -129,6 +138,15 @@ jobs:
       - name: Compile unsigned iphoneos target
         shell: bash
         run: bash scripts/build-ios-xcode.sh
+
+      - name: Return Unity Personal license
+        if: always()
+        shell: bash
+        run: |
+          if command -v unity-cli >/dev/null 2>&1; then
+            unity-cli return-license --license personal --verbose \
+              2>&1 | tee -a Build/logs/unity-license-activation.log || true
+          fi
 
       - name: Upload bootstrap evidence
         if: always()
