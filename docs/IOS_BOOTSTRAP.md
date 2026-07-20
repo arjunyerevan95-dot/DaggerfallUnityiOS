@@ -62,13 +62,13 @@ Pass conditions:
 Export the Unity project on a macOS host with Unity iOS Build Support installed:
 
 ```bash
-./scripts/export-ios.sh
+bash scripts/export-ios.sh
 ```
 
 Compile the exported Xcode project without signing:
 
 ```bash
-./scripts/build-ios-xcode.sh
+bash scripts/build-ios-xcode.sh
 ```
 
 Both scripts accept environment overrides. See the scripts for variable names and defaults.
