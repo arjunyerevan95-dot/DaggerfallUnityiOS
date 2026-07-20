@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-repo_root="${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+repo_root="${PROJECT_DIRECTORY:-${PROJECT_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 build_root="$repo_root/Build"
 log_dir="$build_root/logs"
 artifact_dir="$build_root/uba-ios-bootstrap"
-unity_version="${UNITY_VERSION:-2022.3.62f3}"
+unity_version_raw="${UNITY_VERSION:-2022.3.62f3}"
+unity_version="${unity_version_raw//_/.}"
 
 mkdir -p "$log_dir" "$artifact_dir"
 
@@ -21,6 +22,7 @@ printf 'Project: %s\n' "$repo_root"
 printf 'Unity version: %s\n' "$unity_version"
 printf 'Builder OS: %s\n' "${BUILDER_OS:-unknown}"
 printf 'Output directory: %s\n' "${OUTPUT_DIRECTORY:-unset}"
+printf 'UBA Unity executable: %s\n' "${UNITY_EXE:-unset}"
 
 if [[ "${BUILDER_OS:-MAC}" != "MAC" ]]; then
   echo 'This experiment requires a macOS Build Automation machine.' >&2
@@ -30,6 +32,7 @@ fi
 find_editor() {
   local candidate
   local candidates=(
+    "${UNITY_EXE:-}"
     "${UNITY_EDITOR:-}"
     "/Applications/Unity/Hub/Editor/$unity_version/Unity.app/Contents/MacOS/Unity"
   )
@@ -41,9 +44,9 @@ find_editor() {
     fi
   done
 
-  find /Applications "$HOME" /opt \
+  find /Applications "$HOME" /opt /BUILD_PATH \
     -type f \
-    -path "*/$unity_version/Unity.app/Contents/MacOS/Unity" \
+    -path '*/Unity.app/Contents/MacOS/Unity' \
     -perm -111 \
     2>/dev/null \
     | head -n 1
@@ -52,6 +55,7 @@ find_editor() {
 unity_editor="$(find_editor || true)"
 if [[ -z "$unity_editor" || ! -x "$unity_editor" ]]; then
   echo "Unable to locate an executable Unity $unity_version Editor on the Build Automation machine." >&2
+  echo "UNITY_EXE=${UNITY_EXE:-unset}" >&2
   exit 3
 fi
 
