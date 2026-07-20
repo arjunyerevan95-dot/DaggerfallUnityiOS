@@ -1,0 +1,44 @@
+name: iOS bootstrap preflight
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance-and-scripts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned mobile baseline ancestry
+        shell: bash
+        env:
+          PINNED_SHA: 0fa65294523a132a0e5389d125f58d6566a1e815
+        run: |
+          set -euo pipefail
+          git cat-file -e "${PINNED_SHA}^{commit}"
+          git merge-base --is-ancestor "$PINNED_SHA" HEAD
+
+      - name: Verify pinned Unity editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fqx 'm_EditorVersion: 2022.3.62f3' ProjectSettings/ProjectVersion.txt
+
+      - name: Verify bootstrap files and shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Assets/Editor/IOSBuild.cs
+          test -f docs/IOS_BOOTSTRAP.md
+          bash -n scripts/export-ios.sh
+          bash -n scripts/build-ios-xcode.sh
