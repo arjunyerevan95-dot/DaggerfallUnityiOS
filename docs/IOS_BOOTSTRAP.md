@@ -108,3 +108,5 @@ Stop and record evidence rather than broadening the work when:
 - Progress would require signing, provisioning, installation, runtime gameplay work, mod compatibility work, or voxel-character work.
 
 Those are later gated milestones. A successful bootstrap does not silently authorize every subsequent ambition humans can fit into one repository.
+
+<!-- Licensing diagnostic synchronization marker: 2026-07-21. -->
