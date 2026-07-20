@@ -1,0 +1,111 @@
+name: iOS GitHub runner bootstrap
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-bootstrap-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-ios-build:
+    name: Unity export and unsigned Xcode compile
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    env:
+      IOS_EXPORT_PATH: ${{ github.workspace }}/Build/iOS
+      IOS_DERIVED_DATA_PATH: ${{ github.workspace }}/Build/DerivedData-iOS
+      IOS_XCODE_LOG: ${{ github.workspace }}/Build/logs/ios-xcodebuild.log
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+      UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Verify pinned baseline ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned='0fa65294523a132a0e5389d125f58d6566a1e815'
+          git merge-base --is-ancestor "$pinned" HEAD
+          grep -F 'm_EditorVersion: 2022.3.62f3' ProjectSettings/ProjectVersion.txt
+
+      - name: Validate Unity CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${UNITY_LICENSE:-}" ]]; then
+            echo 'Unity license-file secret is configured.'
+            exit 0
+          fi
+
+          if [[ -n "${UNITY_SERIAL:-}" && -n "${UNITY_EMAIL:-}" && -n "${UNITY_PASSWORD:-}" ]]; then
+            echo 'Unity serial credentials are configured.'
+            exit 0
+          fi
+
+          echo 'No Unity CI license is configured.' >&2
+          echo 'Add UNITY_LICENSE, or UNITY_SERIAL + UNITY_EMAIL + UNITY_PASSWORD, as repository Actions secrets.' >&2
+          exit 2
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: unity-library-macos-ios-2022.3.62f3-${{ hashFiles('Packages/manifest.json', 'Packages/packages-lock.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: |
+            unity-library-macos-ios-2022.3.62f3-
+
+      - name: Export unsigned iOS Xcode project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          IOS_EXPORT_PATH: ${{ github.workspace }}/Build/iOS
+        with:
+          projectPath: .
+          unityVersion: 2022.3.62f3
+          targetPlatform: iOS
+          buildMethod: DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine
+          buildsPath: Build
+          buildName: iOS
+          cacheUnityInstallationOnMac: true
+          allowDirtyBuild: true
+
+      - name: Validate Unity export
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d Build/iOS/Unity-iPhone.xcodeproj
+          test -f Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj
+          xcodebuild -version
+
+      - name: Compile unsigned iphoneos target
+        shell: bash
+        run: bash scripts/build-ios-xcode.sh
+
+      - name: Upload bootstrap evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daggerfall-unity-ios-bootstrap-${{ github.run_number }}
+          path: |
+            Build/iOS
+            Build/logs
+          if-no-files-found: warn
+          retention-days: 7
