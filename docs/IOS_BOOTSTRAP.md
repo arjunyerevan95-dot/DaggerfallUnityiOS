@@ -40,18 +40,22 @@ This is an experimental use of supported Build Automation script hooks. It does 
 
 ### Unity Build Automation configuration
 
-Create a configuration with:
+Active configuration:
 
-- Target name: `ios-bootstrap-unsigned-via-macos`
+- Target name: `ios-bootstrap`
 - Branch: `port/ios-bootstrap`
 - Project subfolder path: blank
 - Platform: macOS
 - Auto-detect Unity version: enabled
 - Detected Unity version: `2022.3.62f3`
 - Builder: macOS Standard
-- Scheduling and auto-build: disabled for the first experiment
+- Auto-build: enabled
+- Auto-cancel: enabled
+- Scheduled builds: disabled
 - Pre-build script path: `scripts/uba-prebuild-ios.sh`
 - Post-build script path: `scripts/uba-postbuild-ios.sh`
+
+Every new commit on `port/ios-bootstrap` should now enqueue a fresh build automatically. Auto-cancel should prevent an obsolete queued or running revision from consuming further build time after a newer fix is pushed.
 
 Do not add Apple signing credentials to this carrier target.
 
@@ -60,6 +64,13 @@ Do not add Apple signing credentials to this carrier target.
 - If the managed Editor includes iOS Build Support, the script proceeds to the first actual Unity import or iOS native blocker.
 - If iOS Build Support is absent, the script stops explicitly and records that fact. Do not silently install unrelated toolchains or broaden the milestone.
 - A successful unsigned compile does not produce an installable IPA and does not authorize signing, packaging, installation, runtime, mod, or voxel work.
+
+### Iteration evidence
+
+- Build #1 proved that the configured pre-build hook runs on the managed macOS builder.
+- Build #2 proved that the licensed Unity `2022.3.62f3` Editor can import and compile the project after correcting the Build Automation Editor-path discovery and Unity API mismatches.
+- Build #3 reached iOS player compilation and exposed the first Android-only dependency: `NativeFilePickerNamespace` referenced by `TouchscreenLayoutsManager`.
+- The current branch includes an iOS-only compile-time compatibility shim. It deliberately leaves native iOS import/export UI for a later runtime milestone.
 
 ## Retired GitHub-hosted licensing experiment
 
