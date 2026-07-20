@@ -16,7 +16,7 @@ concurrency:
 jobs:
   unsigned-ios-build:
     name: Unity export and unsigned Xcode compile
-    runs-on: macos-15
+    runs-on: macos-14
     timeout-minutes: 120
 
     env:
