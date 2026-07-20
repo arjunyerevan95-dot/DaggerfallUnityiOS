@@ -31,18 +31,20 @@ The primary Gate 1 through Gate 3 environment is the GitHub-hosted `macos-15` ru
 That workflow:
 
 1. Verifies the pinned baseline ancestry and exact Unity version.
-2. Installs and caches Unity `2022.3.62f3` with iOS Build Support through GameCI.
-3. Runs `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine`.
-4. Verifies the generated Xcode project.
-5. Compiles the generic `iphoneos` target with signing disabled.
-6. Uploads the Xcode project and build logs as workflow evidence.
+2. Installs the official Unity CLI beta.
+3. Installs Unity `2022.3.62f3` with iOS Build Support.
+4. Activates the current named-user Unity Personal entitlement on the runner.
+5. Runs `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine`.
+6. Verifies the generated Xcode project.
+7. Compiles the generic `iphoneos` target with signing disabled.
+8. Uploads the Xcode project and build logs as workflow evidence.
 
-The workflow accepts either:
+The workflow requires these repository Actions secrets:
 
-- `UNITY_LICENSE`, or
-- `UNITY_SERIAL`, `UNITY_EMAIL`, and `UNITY_PASSWORD`
+- `UNITY_USERNAME`: the email address used for the Unity ID
+- `UNITY_PASSWORD`: the Unity ID password
 
-as repository Actions secrets. It fails explicitly before editor installation when neither credential form is available.
+Current Unity Personal activations are entitlement-based and normally create `UnityEntitlementLicense.xml` on a signed-in workstation. This file must not be copied into the repository or used as a `UNITY_LICENSE` secret. The workflow performs named-user activation directly on the ephemeral macOS runner and returns the entitlement during its post-action cleanup.
 
 ## Bootstrap gates
 
