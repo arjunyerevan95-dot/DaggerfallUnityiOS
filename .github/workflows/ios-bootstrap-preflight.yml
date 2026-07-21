@@ -43,8 +43,10 @@ jobs:
           test -f Assets/IOS/Scripts/IOSFirstRunRuntime.cs
           test -f docs/IOS_BOOTSTRAP.md
           test -f docs/IOS_RUNTIME_IMPORT.md
+          test -f docs/IOS_GITHUB_RELEASES.md
           bash -n scripts/export-ios.sh
           bash -n scripts/build-ios-xcode.sh
           bash -n scripts/package-ios-unsigned.sh
+          bash -n scripts/publish-ios-github-release.sh
           bash -n scripts/uba-prebuild-ios.sh
           bash -n scripts/uba-postbuild-ios.sh

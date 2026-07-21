@@ -26,7 +26,6 @@ set +e
 bash "$repo_root/scripts/build-ios-xcode.sh"
 xcode_status=$?
 set -e
-
 printf '%s\n' "$xcode_status" > "$artifact_dir/ios-xcodebuild-exit-code.txt"
 
 package_status=125
@@ -62,7 +61,7 @@ Daggerfall Unity iOS unsigned package
 
 This archive contains an unsigned ARM64 iOS app and IPA generated with code signing disabled.
 It is not installable until separately signed outside this bounded build checkpoint.
-No installation or runtime behavior has been validated.
+No installation or runtime behavior has been validated by this artifact alone.
 EOF_README
 
   set +e
@@ -78,6 +77,23 @@ EOF_README
   fi
 fi
 printf '%s\n' "$delivery_status" > "$artifact_dir/ios-artifact-delivery-exit-code.txt"
+
+release_status=125
+if (( delivery_status == 0 )); then
+  export GITHUB_RELEASE_IPA="$artifact_dir/unsigned-ios-package/DaggerfallUnity-ios-arm64-unsigned.ipa"
+  export GITHUB_RELEASE_EVIDENCE="$primary_download_bundle"
+  export GITHUB_RELEASE_CHECKSUMS="$artifact_dir/unsigned-ios-package/SHA256SUMS"
+  export GITHUB_RELEASE_MANIFEST="$artifact_dir/unsigned-ios-package/unsigned-package-manifest.txt"
+
+  printf 'Publishing the unsigned iOS package to the rolling GitHub prerelease.\n'
+  set +e
+  bash "$repo_root/scripts/publish-ios-github-release.sh"
+  release_status=$?
+  set -e
+else
+  echo 'Skipping GitHub release publishing because primary artifact delivery did not succeed.' >&2
+fi
+printf '%s\n' "$release_status" > "$artifact_dir/ios-github-release-exit-code.txt"
 
 if [[ -n "${OUTPUT_DIRECTORY:-}" ]]; then
   output_extra="$OUTPUT_DIRECTORY/extra_data/daggerfall-ios-bootstrap"
@@ -116,4 +132,9 @@ if (( delivery_status != 0 )); then
   exit "$delivery_status"
 fi
 
-printf 'UBA unsigned iOS bootstrap, packaging, and primary artifact delivery completed successfully.\n'
+if (( release_status != 0 )); then
+  echo "GitHub release publishing failed with exit code $release_status." >&2
+  exit "$release_status"
+fi
+
+printf 'UBA unsigned iOS bootstrap, packaging, primary artifact delivery, and GitHub release publishing completed successfully.\n'
