@@ -28,6 +28,19 @@ set -e
 
 printf '%s\n' "$xcode_status" > "$artifact_dir/ios-xcodebuild-exit-code.txt"
 
+package_status=125
+if (( xcode_status == 0 )); then
+  printf 'Packaging the unsigned iOS app and IPA artifacts.\n'
+  export IOS_PACKAGE_OUTPUT_DIR="$artifact_dir/unsigned-ios-package"
+  set +e
+  bash "$repo_root/scripts/package-ios-unsigned.sh"
+  package_status=$?
+  set -e
+else
+  echo 'Skipping unsigned app packaging because xcodebuild did not succeed.' >&2
+fi
+printf '%s\n' "$package_status" > "$artifact_dir/ios-package-exit-code.txt"
+
 rm -f "$artifact_dir/daggerfall-unity-ios-xcode-project.tar.gz"
 tar -czf "$artifact_dir/daggerfall-unity-ios-xcode-project.tar.gz" -C "$build_root" iOS
 
@@ -38,7 +51,7 @@ if [[ -n "${OUTPUT_DIRECTORY:-}" ]]; then
   output_extra="$OUTPUT_DIRECTORY/extra_data/daggerfall-ios-bootstrap"
   mkdir -p "$output_extra"
   cp -R "$artifact_dir/." "$output_extra/"
-  printf 'Copied unsigned iOS bootstrap evidence to: %s\n' "$output_extra"
+  printf 'Copied unsigned iOS bootstrap evidence and package artifacts to: %s\n' "$output_extra"
 else
   echo 'Build Automation did not provide OUTPUT_DIRECTORY; evidence remains under Build/uba-ios-bootstrap.' >&2
 fi
@@ -48,4 +61,9 @@ if (( xcode_status != 0 )); then
   exit "$xcode_status"
 fi
 
-printf 'UBA unsigned iOS bootstrap completed successfully.\n'
+if (( package_status != 0 )); then
+  echo "Unsigned iOS packaging failed with exit code $package_status; evidence was packaged before stopping." >&2
+  exit "$package_status"
+fi
+
+printf 'UBA unsigned iOS bootstrap and packaging completed successfully.\n'

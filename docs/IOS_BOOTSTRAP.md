@@ -9,7 +9,7 @@ This repository preserves the complete reachable history of the mobile-oriented 
 - Source commit: `0fa65294523a132a0e5389d125f58d6566a1e815`
 - Unity editor: `2022.3.62f3`
 
-The Android fork is the starting point because it already contains mobile UI, touch input, file import, and mobile performance work. iOS changes must remain isolated on `port/ios-bootstrap` until the bootstrap gates are satisfied.
+The Android fork is the starting point because it already contains mobile UI, touch input, file import, and mobile performance work. iOS changes remain isolated on `port/ios-bootstrap` while the bounded bootstrap and unsigned-packaging checkpoints are validated.
 
 ## Initial iOS target
 
@@ -19,112 +19,108 @@ The Android fork is the starting point because it already contains mobile UI, to
 - Metal only
 - Landscape left and landscape right
 - Minimum iOS 15.0
-- Unsigned Xcode export first
-- Provisional bundle identifier: `com.arjukstudios.daggerfallunityios`
+- Bundle identifier `com.arjukstudios.daggerfallunityios`
+- Unsigned Xcode export and generic-device compile before any signing or installation work
 
 No commercial Daggerfall game data may be committed to this repository. Users will eventually import their own legally obtained game data into the application sandbox.
 
-## Current execution strategy
+## Unity Build Automation execution path
 
-The ordinary Unity Build Automation iOS configuration requires an Apple signing credential set. The project owner does not currently have an Apple Developer Program membership, so the normal signed-iOS target is intentionally not used for this bootstrap milestone.
+The active experiment uses a Unity Build Automation **macOS Standard** target as a licensed carrier environment. Its repository hooks perform the bounded iOS work around the normal macOS carrier build:
 
-The active experiment uses a Unity Build Automation **macOS Standard** target as a licensed carrier environment. Its repository hooks perform the bounded Gate 1 through Gate 3 work around the normal macOS carrier build:
+1. Verify that Build Automation provisioned Unity `2022.3.62f3` on macOS.
+2. Verify that the Editor includes iOS Build Support and that Xcode is present.
+3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to create `Build/iOS/Unity-iPhone.xcodeproj`.
+4. Compile the generated Release project for generic `iphoneos` with signing disabled.
+5. Validate and package the resulting unsigned iOS `.app` and `.ipa` artifacts.
+6. Copy the generated Xcode project, logs, manifests, checksums, and package artifacts into Build Automation `extra_data`.
 
-1. Verify that Build Automation provisioned Unity `2022.3.62f3` on a macOS builder.
-2. Verify that the provisioned Editor includes iOS Build Support.
-3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to export `Build/iOS/Unity-iPhone.xcodeproj`.
-4. Compile the generic `iphoneos` target with signing disabled from the post-build hook.
-5. Package the Xcode project and logs under Build Automation's `extra_data` artifacts.
+This does not turn the macOS carrier artifact into an iOS application. The iOS result is produced separately by the pre-export and post-build hooks.
 
-This is an experimental use of supported Build Automation script hooks. It does not claim that a macOS target is an iOS distribution build. It exists only to determine whether the licensed builder image can perform the unsigned bootstrap gates without Apple credentials.
-
-### Unity Build Automation configuration
-
-Active configuration:
+### Active Build Automation configuration
 
 - Target name: `ios-bootstrap`
 - Branch: `port/ios-bootstrap`
-- Project subfolder path: blank
 - Platform: macOS
-- Auto-detect Unity version: enabled
-- Detected Unity version: `2022.3.62f3`
 - Builder: macOS Standard
+- Unity: `2022.3.62f3`
 - Auto-build: enabled
 - Auto-cancel: enabled
 - Scheduled builds: disabled
-- Pre-build script path: `scripts/uba-prebuild-ios.sh`
-- Post-build script path: `scripts/uba-postbuild-ios.sh`
+- Pre-build script: `scripts/uba-prebuild-ios.sh`
 - Pre-export method: `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport`
-
-Every new commit on `port/ios-bootstrap` should now enqueue a fresh build automatically. Auto-cancel should prevent an obsolete queued or running revision from consuming further build time after a newer fix is pushed.
+- Post-build script: `scripts/uba-postbuild-ios.sh`
 
 Do not add Apple signing credentials to this carrier target.
 
-### Bounded experiment outcomes
-
-- If the managed Editor includes iOS Build Support, the script proceeds to the first actual Unity import or iOS native blocker.
-- If iOS Build Support is absent, the script stops explicitly and records that fact. Do not silently install unrelated toolchains or broaden the milestone.
-- A successful unsigned compile does not produce an installable IPA and does not authorize signing, packaging, installation, runtime, mod, or voxel work.
-
-### Iteration evidence
+## Iteration evidence
 
 - Build #1 proved that the configured pre-build hook runs on the managed macOS builder.
-- Build #2 proved that the licensed Unity `2022.3.62f3` Editor can import and compile the project after correcting the Build Automation Editor-path discovery and Unity API mismatches.
-- Build #3 reached iOS player compilation and exposed the first Android-only dependency: `NativeFilePickerNamespace` referenced by `TouchscreenLayoutsManager`.
+- Build #2 proved that the licensed Unity Editor can import and compile the project.
+- Build #3 exposed the Android-only `NativeFilePickerNamespace` dependency.
 - Builds #4 through #8 advanced the real iOS IL2CPP export and isolated the optional runtime C# compiler addon as incompatible with iOS because its `System.CodeDom` APIs are unavailable.
-- Build #9 proved that the iOS-only runtime compiler boundary works. Unity completed the iOS export with `result=Succeeded`, zero errors, and produced `Build/iOS/Unity-iPhone.xcodeproj`.
-- Build #9 also proved that the post-build hook invokes unsigned Release `xcodebuild` for generic `iphoneos` with `CODE_SIGNING_ALLOWED=NO` and `CODE_SIGNING_REQUIRED=NO`.
-- Build #9 reached the final ARM64 `UnityFramework` link. Its only fatal native blocker was missing `MobileCoreServices` linkage for `UTTypeCreatePreferredIdentifierForTag` and `kUTTagClassFilenameExtension`, both referenced by the retained NativeFilePicker iOS source.
-- The current branch adds a generated-Xcode-project postprocessor that links `MobileCoreServices.framework` only to the `UnityFramework` target. It also packages the Xcode project and logs before propagating any native-build failure so future evidence is not lost to shell `errexit` behavior.
+- Build #9 proved the iOS-only runtime-compiler boundary and passed the unsigned Xcode export. It reached the final ARM64 native link and isolated missing `MobileCoreServices.framework` linkage for two NativeFilePicker UTI symbols.
+- Build #10 linked `MobileCoreServices.framework` into `UnityFramework`, exported the iOS project with zero errors, and completed unsigned Release `xcodebuild` for `arm64-apple-ios15.0` with `** BUILD SUCCEEDED **`.
 
-Build #10 should prove that the NativeFilePicker UTI symbols resolve and that the unsigned generic-device Xcode build either succeeds or stops at the next unrelated native incompatibility.
-
-## Retired GitHub-hosted licensing experiment
-
-The GitHub-hosted macOS workflow proved that Unity `2022.3.62f3`, iOS Build Support, and Unity Hub can be installed on an ephemeral runner. It also proved that current Unity Personal activation requires an interactive signed-in user session. The official CLI reported `NOT_SIGNED_IN`; Unity ID email/password secrets could not activate the Personal entitlement headlessly.
-
-That workflow remains historical evidence only. `UNITY_USERNAME` and `UNITY_PASSWORD` repository secrets are not required for the current Build Automation carrier experiment and should not be retained.
+Build #10 completes the original unsigned bootstrap milestone.
 
 ## Bootstrap gates
 
 ### Gate 0: provenance
 
-Pass conditions:
+Passed.
 
 - `main` resolves to the pinned mobile baseline.
-- `port/ios-bootstrap` descends directly from that baseline.
+- `port/ios-bootstrap` descends from that baseline.
 - The original commit ancestry remains available.
 
-### Gate 1: Unity editor import
+### Gate 1: Unity editor import and player script compilation
 
-Pass conditions:
+Passed.
 
-- The project imports in Unity `2022.3.62f3` on the managed macOS builder.
-- Editor compilation completes without unexplained errors.
-- Any Android-only compilation failure is isolated and attributed before modification.
+- Unity `2022.3.62f3` imports the project on the managed macOS builder.
+- iOS player script compilation passes.
+- Android-only and runtime-compiler incompatibilities are isolated behind explicit platform boundaries.
 
 ### Gate 2: unsigned Xcode export
 
-Pass conditions:
+Passed in Build #9 and reconfirmed in Build #10.
 
-- `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` completes.
+- `BuildFromCloudPreExport` completes.
 - `Build/iOS/Unity-iPhone.xcodeproj` exists.
-- The export uses ARM64, IL2CPP, Metal, landscape orientation, and iOS 15.0 or later.
-
-Build #9 satisfies Gate 2.
+- The export uses ARM64, IL2CPP, Metal, landscape orientations, and iOS 15.0.
 
 ### Gate 3: unsigned native compile
 
-Pass conditions:
+Passed in Build #10.
 
-- `xcodebuild` compiles the generated project for generic `iphoneos` with signing disabled.
-- The first reproducible native blocker is documented if compilation fails.
+- Release `xcodebuild` targets generic `iphoneos`.
+- `CODE_SIGNING_ALLOWED=NO` and `CODE_SIGNING_REQUIRED=NO` are applied.
+- The generated app links for `arm64-apple-ios15.0`.
+- Xcode reports `** BUILD SUCCEEDED **`.
 
-Build #9 reached the final ARM64 link and documented the missing NativeFilePicker framework dependency. Gate 3 remains open until the unsigned link completes.
+## Unsigned packaging checkpoint
 
-## Local reproduction fallback
+The next bounded checkpoint packages the successful Build #10 product without signing it.
 
-The following commands remain available on any macOS host with Unity `2022.3.62f3` and iOS Build Support installed.
+`scripts/package-ios-unsigned.sh` must:
+
+- Locate the Release device product under `Build/DerivedData-iOS/Build/Products/Release-iphoneos`.
+- Require bundle identifier `com.arjukstudios.daggerfallunityios`.
+- Require minimum iOS version `15.0`.
+- Require platform `iPhoneOS` and architecture `arm64`.
+- Reject simulator architectures.
+- Reject any pre-existing code signature.
+- Produce an unsigned `.app.tar.gz` archive.
+- Produce an unsigned `.ipa` with `Payload/DaggerfallUnity.app` layout.
+- Produce a manifest and SHA-256 checksums.
+- Optionally archive the generated dSYM when present.
+
+The package is explicitly **not installable until separately signed**. This checkpoint does not authorize signing, provisioning, installation, launch testing, game-data import, gameplay validation, touch-control redesign, mod work, or voxel-character work.
+
+Build #11 should prove that the unsigned package is reproducible and copied into Build Automation `extra_data/daggerfall-ios-bootstrap/unsigned-ios-package`.
+
+## Local reproduction
 
 Export the Unity project:
 
@@ -138,17 +134,23 @@ Compile the exported Xcode project without signing:
 bash scripts/build-ios-xcode.sh
 ```
 
-Both scripts accept environment overrides. See the scripts for variable names and defaults.
+Package the successful unsigned app and IPA:
+
+```bash
+bash scripts/package-ios-unsigned.sh
+```
+
+The scripts accept environment overrides documented in their source.
 
 ## Stop conditions
 
 Stop and record evidence rather than broadening the work when:
 
-- Unity cannot import under the pinned editor version.
-- The managed macOS target lacks iOS Build Support.
-- An Android-only dependency lacks an iOS implementation.
-- A native plugin requires replacement or source-level porting.
-- Xcode export succeeds but native compilation fails for an unexplained reason.
-- Progress would require signing, provisioning, installation, runtime gameplay work, mod compatibility work, or voxel-character work.
+- The generated Release device app is missing.
+- Bundle identifier, minimum iOS version, supported platform, or architecture differs from the pinned target.
+- The product unexpectedly contains simulator architecture slices.
+- The product is already signed.
+- The unsigned IPA does not contain the expected `Payload/DaggerfallUnity.app` structure.
+- Progress would require signing, provisioning, installation, runtime gameplay work, game-data import, mod compatibility work, or voxel-character work.
 
-Those are later gated milestones. A successful bootstrap does not silently authorize every subsequent ambition humans can fit into one repository.
+A successful unsigned package is an artifact checkpoint, not proof that the application installs or runs on physical hardware. Humans do love promoting a ZIP file to “finished product” before it has met a device.
