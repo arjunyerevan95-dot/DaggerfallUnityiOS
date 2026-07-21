@@ -37,6 +37,17 @@ namespace DaggerfallUnityIOS.Editor
             }
         }
 
+#if UNITY_CLOUD_BUILD
+        // Configured in Unity Build Automation as the Pre-Export Method.
+        // This runs after script compilation and before the macOS carrier export.
+        public static void BuildFromCloudPreExport()
+        {
+            Debug.Log("UBA pre-export hook: starting bounded unsigned iOS Xcode export.");
+            ExportIOSProject();
+            Debug.Log("UBA pre-export hook: unsigned iOS Xcode export completed.");
+        }
+#endif
+
         private static void ExportIOSProject()
         {
             string projectRoot = Directory.GetParent(Application.dataPath)?.FullName
@@ -48,11 +59,6 @@ namespace DaggerfallUnityIOS.Editor
                 : Path.GetFullPath(configuredExportPath);
 
             ConfigureIOSPlayerSettings();
-
-            if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.iOS, BuildTarget.iOS))
-            {
-                throw new InvalidOperationException("Unity could not switch to the iOS build target.");
-            }
 
             string[] scenes = EditorBuildSettings.scenes
                 .Where(scene => scene.enabled && !string.IsNullOrWhiteSpace(scene.path))
@@ -80,7 +86,10 @@ namespace DaggerfallUnityIOS.Editor
                 options = BuildOptions.None,
             };
 
-            Debug.Log($"Exporting unsigned iOS Xcode project to: {exportPath}");
+            Debug.Log(
+                $"Exporting unsigned iOS Xcode project to: {exportPath}. " +
+                $"Current carrier target: {EditorUserBuildSettings.activeBuildTarget}");
+
             BuildReport report = BuildPipeline.BuildPlayer(options);
             BuildSummary summary = report.summary;
 
@@ -94,6 +103,19 @@ namespace DaggerfallUnityIOS.Editor
                 throw new InvalidOperationException(
                     $"iOS export failed with {summary.totalErrors} error(s). Review the Unity build log.");
             }
+
+            string xcodeProject = Path.Combine(exportPath, "Unity-iPhone.xcodeproj");
+            if (!Directory.Exists(xcodeProject))
+            {
+                throw new InvalidOperationException(
+                    $"Unity reported success but did not produce the expected Xcode project: {xcodeProject}");
+            }
+
+            string evidenceDirectory = Path.Combine(projectRoot, "Build", "uba-ios-bootstrap");
+            Directory.CreateDirectory(evidenceDirectory);
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "ios-export-succeeded.txt"),
+                $"Unity {Application.unityVersion} exported {xcodeProject}{Environment.NewLine}");
         }
 
         private static void ConfigureIOSPlayerSettings()
