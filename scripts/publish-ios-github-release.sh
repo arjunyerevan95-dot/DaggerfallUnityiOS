@@ -3,11 +3,19 @@ set -Eeuo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repository="${GITHUB_RELEASE_REPOSITORY:-arjunyerevan95-dot/DaggerfallUnityiOS}"
-release_tag="${GITHUB_RELEASE_TAG:-ios-latest}"
-release_name="${GITHUB_RELEASE_NAME:-Daggerfall Unity iOS - Latest Device Build}"
 source_commit="${GIT_COMMIT:-$(git -C "$repo_root" rev-parse HEAD)}"
 short_commit="${source_commit:0:12}"
+raw_build_number="${BUILD_NUMBER:-${CLOUD_BUILD_NUMBER:-${UNITY_CLOUD_BUILD_NUMBER:-${BUILD_ID:-unknown}}}}"
+safe_build_number="$(printf '%s' "$raw_build_number" | tr -c '[:alnum:]._- ' '-' | tr ' ' '-')"
+[[ -n "$safe_build_number" ]] || safe_build_number="unknown"
+release_tag="${GITHUB_RELEASE_TAG:-ios-build-${safe_build_number}-${short_commit}}"
+release_name="${GITHUB_RELEASE_NAME:-Daggerfall Unity iOS - Build ${raw_build_number} (${short_commit})}"
 api_root="https://api.github.com/repos/$repository"
+
+ipa_name="DaggerfallUnity-ios-build-${safe_build_number}-${short_commit}-arm64-unsigned.ipa"
+evidence_name="DaggerfallUnity-iOS-build-${safe_build_number}-${short_commit}-evidence.zip"
+checksums_name="SHA256SUMS-${safe_build_number}-${short_commit}.txt"
+manifest_name="unsigned-package-manifest-${safe_build_number}-${short_commit}.txt"
 
 : "${GITHUB_RELEASE_TOKEN:?GITHUB_RELEASE_TOKEN is required for GitHub release publishing}"
 : "${GITHUB_RELEASE_IPA:?GITHUB_RELEASE_IPA must point to the unsigned IPA}"
@@ -26,7 +34,6 @@ for required_file in \
   fi
 done
 
-# Unity Build Automation understands this directive and redacts the token from logs.
 printf '::mask-value::%s\n' "$GITHUB_RELEASE_TOKEN"
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/daggerfall-github-release.XXXXXX")"
@@ -83,17 +90,25 @@ PY
 
 write_release_payload() {
   local output="$1"
-  python3 - "$output" "$release_tag" "$release_name" "$source_commit" "$short_commit" <<'PY'
+  python3 - \
+    "$output" \
+    "$release_tag" \
+    "$release_name" \
+    "$source_commit" \
+    "$raw_build_number" \
+    "$ipa_name" <<'PY'
 import json
 import sys
 
-output, tag, name, commit, short_commit = sys.argv[1:]
+output, tag, name, commit, build_number, ipa_name = sys.argv[1:]
 body = f"""Automatically published from Unity Build Automation.
 
+Unity build: `{build_number}`
 Source commit: `{commit}`
+IPA asset: `{ipa_name}`
 
-Assets include the unsigned ARM64 iOS IPA, package evidence, checksums, and manifest.
-The IPA must be signed separately before installation. This release does not claim gameplay validation.
+This is an unsigned ARM64 iOS build. SideStore or another development-signing workflow must sign it before installation.
+No commercial Daggerfall data is included. This release does not claim gameplay validation.
 """
 payload = {
     "tag_name": tag,
@@ -145,10 +160,10 @@ if [[ "$status" != "200" ]]; then
   exit 6
 fi
 
-ipa_asset="$work_dir/DaggerfallUnity-ios-arm64-unsigned.ipa"
-evidence_asset="$work_dir/DaggerfallUnity-iOS-build-evidence.zip"
-checksums_asset="$work_dir/SHA256SUMS"
-manifest_asset="$work_dir/unsigned-package-manifest.txt"
+ipa_asset="$work_dir/$ipa_name"
+evidence_asset="$work_dir/$evidence_name"
+checksums_asset="$work_dir/$checksums_name"
+manifest_asset="$work_dir/$manifest_name"
 cp "$GITHUB_RELEASE_IPA" "$ipa_asset"
 cp "$GITHUB_RELEASE_EVIDENCE" "$evidence_asset"
 cp "$GITHUB_RELEASE_CHECKSUMS" "$checksums_asset"
@@ -158,17 +173,10 @@ python3 - "$assets_response" > "$work_dir/delete-assets.tsv" <<'PY'
 import json
 import sys
 
-wanted = {
-    "DaggerfallUnity-ios-arm64-unsigned.ipa",
-    "DaggerfallUnity-iOS-build-evidence.zip",
-    "SHA256SUMS",
-    "unsigned-package-manifest.txt",
-}
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     assets = json.load(handle)
 for asset in assets:
-    if asset.get("name") in wanted:
-        print(f"{asset['id']}\t{asset['name']}")
+    print(f"{asset['id']}\t{asset['name']}")
 PY
 
 while IFS=$'\t' read -r asset_id asset_name; do
@@ -222,6 +230,16 @@ upload_asset "$evidence_asset"
 upload_asset "$checksums_asset"
 upload_asset "$manifest_asset"
 
-printf 'Published rolling GitHub prerelease: %s\n' "$release_url"
+result_dir="$(dirname "$GITHUB_RELEASE_MANIFEST")"
+direct_ipa_url="https://github.com/$repository/releases/download/$release_tag/$ipa_name"
+printf '%s\n' "$release_url" > "$result_dir/github-release-url.txt"
+printf '%s\n' "$direct_ipa_url" > "$result_dir/github-release-ipa-url.txt"
+printf '%s\n' "$release_tag" > "$result_dir/github-release-tag.txt"
+printf '%s\n' "$source_commit" > "$result_dir/github-release-source-commit.txt"
+printf '%s\n' "$raw_build_number" > "$result_dir/github-release-build-number.txt"
+
+printf 'Published immutable GitHub prerelease: %s\n' "$release_url"
+printf 'Direct IPA URL: %s\n' "$direct_ipa_url"
 printf 'Release tag: %s\n' "$release_tag"
 printf 'Source commit: %s\n' "$source_commit"
+printf 'Unity build number: %s\n' "$raw_build_number"
