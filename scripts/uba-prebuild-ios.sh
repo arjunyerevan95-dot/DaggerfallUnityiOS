@@ -10,14 +10,9 @@ unity_version="${unity_version_raw//_/.}"
 
 mkdir -p "$log_dir" "$artifact_dir"
 
-export IOS_EXPORT_PATH="$build_root/iOS"
-export IOS_DERIVED_DATA_PATH="$build_root/DerivedData-iOS"
-export IOS_EXPORT_LOG="$log_dir/ios-unity-export.log"
-export IOS_XCODE_LOG="$log_dir/ios-xcodebuild.log"
-
 exec > >(tee "$log_dir/uba-prebuild-ios.log") 2>&1
 
-printf 'Daggerfall Unity iOS UBA bootstrap\n'
+printf 'Daggerfall Unity iOS UBA bootstrap preflight\n'
 printf 'Project: %s\n' "$repo_root"
 printf 'Unity version: %s\n' "$unity_version"
 printf 'Builder OS: %s\n' "${BUILDER_OS:-unknown}"
@@ -44,7 +39,7 @@ find_editor() {
     fi
   done
 
-  find /Applications "$HOME" /opt /BUILD_PATH \
+  find /Applications "$HOME" /opt /BUILD_PATH /Volumes \
     -type f \
     -path '*/Unity.app/Contents/MacOS/Unity' \
     -perm -111 \
@@ -67,19 +62,13 @@ if [[ ! -d "$editor_root/PlaybackEngines/iOSSupport" ]]; then
 fi
 
 printf 'Using Unity Editor: %s\n' "$unity_editor"
-"$unity_editor" -version
 xcodebuild -version
 
-UNITY_EDITOR="$unity_editor" bash "$repo_root/scripts/export-ios.sh"
-bash "$repo_root/scripts/build-ios-xcode.sh"
+cat > "$artifact_dir/preflight-environment.txt" <<EOF
+Unity version: $unity_version
+Unity executable: $unity_editor
+Builder OS: ${BUILDER_OS:-unknown}
+Xcode: $(xcodebuild -version | tr '\n' ' ')
+EOF
 
-tar -czf "$artifact_dir/daggerfall-unity-ios-xcode-project.tar.gz" -C "$build_root" iOS
-cp -R "$log_dir" "$artifact_dir/logs"
-
-if [[ -n "${OUTPUT_DIRECTORY:-}" ]]; then
-  output_extra="$OUTPUT_DIRECTORY/extra_data/daggerfall-ios-bootstrap"
-  mkdir -p "$output_extra"
-  cp -R "$artifact_dir/." "$output_extra/"
-fi
-
-printf 'UBA unsigned iOS bootstrap completed successfully.\n'
+printf 'UBA pre-build checks completed. The configured Unity pre-export method will perform the iOS Xcode export.\n'
