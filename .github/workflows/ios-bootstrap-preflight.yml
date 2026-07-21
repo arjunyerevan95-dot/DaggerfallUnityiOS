@@ -40,7 +40,9 @@ jobs:
           set -euo pipefail
           test -f Assets/Editor/IOSBuild.cs
           test -f Assets/Editor/IOSPostProcess.cs
+          test -f Assets/IOS/Scripts/IOSFirstRunRuntime.cs
           test -f docs/IOS_BOOTSTRAP.md
+          test -f docs/IOS_RUNTIME_IMPORT.md
           bash -n scripts/export-ios.sh
           bash -n scripts/build-ios-xcode.sh
           bash -n scripts/package-ios-unsigned.sh
