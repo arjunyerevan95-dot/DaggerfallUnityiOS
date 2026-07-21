@@ -33,7 +33,8 @@ The active experiment uses a Unity Build Automation **macOS Standard** target as
 3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to create `Build/iOS/Unity-iPhone.xcodeproj`.
 4. Compile the generated Release project for generic `iphoneos` with signing disabled.
 5. Validate and package the resulting unsigned iOS `.app` and `.ipa` artifacts.
-6. Copy the generated Xcode project, logs, manifests, checksums, and package artifacts into Build Automation `extra_data`.
+6. Preserve full evidence under Build Automation `extra_data`.
+7. Copy a compact `DaggerfallUnity-iOS-unsigned-package.zip` beside the primary macOS carrier artifact so it appears in the ordinary dashboard ZIP download.
 
 This does not turn the macOS carrier artifact into an iOS application. The iOS result is produced separately by the pre-export and post-build hooks.
 
@@ -61,6 +62,8 @@ Do not add Apple signing credentials to this carrier target.
 - Builds #4 through #8 advanced the real iOS IL2CPP export and isolated the optional runtime C# compiler addon as incompatible with iOS because its `System.CodeDom` APIs are unavailable.
 - Build #9 proved the iOS-only runtime-compiler boundary and passed the unsigned Xcode export. It reached the final ARM64 native link and isolated missing `MobileCoreServices.framework` linkage for two NativeFilePicker UTI symbols.
 - Build #10 linked `MobileCoreServices.framework` into `UnityFramework`, exported the iOS project with zero errors, and completed unsigned Release `xcodebuild` for `arm64-apple-ios15.0` with `** BUILD SUCCEEDED **`.
+- The first unsigned-packaging runs copied custom artifacts into `OUTPUT_DIRECTORY/extra_data`, but the current Unity dashboard exposed only the primary macOS carrier ZIP and Build Reports. The downloaded ZIP contained only `ios-bootstrap.app`.
+- The current branch therefore mirrors a compact unsigned iOS package ZIP into the root of `OUTPUT_DIRECTORY`, beside the carrier app, while retaining full logs and Xcode evidence in `extra_data`.
 
 Build #10 completes the original unsigned bootstrap milestone.
 
@@ -99,9 +102,7 @@ Passed in Build #10.
 - The generated app links for `arm64-apple-ios15.0`.
 - Xcode reports `** BUILD SUCCEEDED **`.
 
-## Unsigned packaging checkpoint
-
-The next bounded checkpoint packages the successful Build #10 product without signing it.
+## Unsigned packaging and delivery checkpoint
 
 `scripts/package-ios-unsigned.sh` must:
 
@@ -116,9 +117,31 @@ The next bounded checkpoint packages the successful Build #10 product without si
 - Produce a manifest and SHA-256 checksums.
 - Optionally archive the generated dSYM when present.
 
+The post-build hook must then create:
+
+```text
+DaggerfallUnity-iOS-unsigned-package.zip
+```
+
+The ordinary Unity dashboard ZIP download for the authoritative run must contain both:
+
+```text
+ios-bootstrap.app/
+DaggerfallUnity-iOS-unsigned-package.zip
+```
+
+The nested package ZIP must contain:
+
+```text
+unsigned-ios-package/
+ios-xcodebuild-exit-code.txt
+ios-package-exit-code.txt
+README.txt
+```
+
 The package is explicitly **not installable until separately signed**. This checkpoint does not authorize signing, provisioning, installation, launch testing, game-data import, gameplay validation, touch-control redesign, mod work, or voxel-character work.
 
-Build #11 should prove that the unsigned package is reproducible and copied into Build Automation `extra_data/daggerfall-ios-bootstrap/unsigned-ios-package`.
+The next authoritative run should prove that `ios-xcodebuild-exit-code.txt`, `ios-package-exit-code.txt`, and `ios-artifact-delivery-exit-code.txt` all contain `0`, and that the primary dashboard ZIP exposes the nested iOS package.
 
 ## Local reproduction
 
@@ -151,6 +174,7 @@ Stop and record evidence rather than broadening the work when:
 - The product unexpectedly contains simulator architecture slices.
 - The product is already signed.
 - The unsigned IPA does not contain the expected `Payload/DaggerfallUnity.app` structure.
+- The compact iOS package cannot be placed into the primary Build Automation output directory.
 - Progress would require signing, provisioning, installation, runtime gameplay work, game-data import, mod compatibility work, or voxel-character work.
 
 A successful unsigned package is an artifact checkpoint, not proof that the application installs or runs on physical hardware. Humans do love promoting a ZIP file to “finished product” before it has met a device.
