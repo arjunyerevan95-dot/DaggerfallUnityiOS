@@ -28,12 +28,12 @@ No commercial Daggerfall game data may be committed to this repository. Users wi
 
 The ordinary Unity Build Automation iOS configuration requires an Apple signing credential set. The project owner does not currently have an Apple Developer Program membership, so the normal signed-iOS target is intentionally not used for this bootstrap milestone.
 
-The active experiment uses a Unity Build Automation **macOS Standard** target as a licensed carrier environment. Its repository pre-build script attempts the bounded Gate 1 through Gate 3 work before the normal macOS carrier build:
+The active experiment uses a Unity Build Automation **macOS Standard** target as a licensed carrier environment. Its repository hooks perform the bounded Gate 1 through Gate 3 work around the normal macOS carrier build:
 
 1. Verify that Build Automation provisioned Unity `2022.3.62f3` on a macOS builder.
 2. Verify that the provisioned Editor includes iOS Build Support.
-3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine` to export `Build/iOS/Unity-iPhone.xcodeproj`.
-4. Compile the generic `iphoneos` target with signing disabled.
+3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to export `Build/iOS/Unity-iPhone.xcodeproj`.
+4. Compile the generic `iphoneos` target with signing disabled from the post-build hook.
 5. Package the Xcode project and logs under Build Automation's `extra_data` artifacts.
 
 This is an experimental use of supported Build Automation script hooks. It does not claim that a macOS target is an iOS distribution build. It exists only to determine whether the licensed builder image can perform the unsigned bootstrap gates without Apple credentials.
@@ -54,6 +54,7 @@ Active configuration:
 - Scheduled builds: disabled
 - Pre-build script path: `scripts/uba-prebuild-ios.sh`
 - Post-build script path: `scripts/uba-postbuild-ios.sh`
+- Pre-export method: `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport`
 
 Every new commit on `port/ios-bootstrap` should now enqueue a fresh build automatically. Auto-cancel should prevent an obsolete queued or running revision from consuming further build time after a newer fix is pushed.
 
@@ -70,7 +71,13 @@ Do not add Apple signing credentials to this carrier target.
 - Build #1 proved that the configured pre-build hook runs on the managed macOS builder.
 - Build #2 proved that the licensed Unity `2022.3.62f3` Editor can import and compile the project after correcting the Build Automation Editor-path discovery and Unity API mismatches.
 - Build #3 reached iOS player compilation and exposed the first Android-only dependency: `NativeFilePickerNamespace` referenced by `TouchscreenLayoutsManager`.
-- The current branch includes an iOS-only compile-time compatibility shim. It deliberately leaves native iOS import/export UI for a later runtime milestone.
+- Builds #4 through #8 advanced the real iOS IL2CPP export and isolated the optional runtime C# compiler addon as incompatible with iOS because its `System.CodeDom` APIs are unavailable.
+- Build #9 proved that the iOS-only runtime compiler boundary works. Unity completed the iOS export with `result=Succeeded`, zero errors, and produced `Build/iOS/Unity-iPhone.xcodeproj`.
+- Build #9 also proved that the post-build hook invokes unsigned Release `xcodebuild` for generic `iphoneos` with `CODE_SIGNING_ALLOWED=NO` and `CODE_SIGNING_REQUIRED=NO`.
+- Build #9 reached the final ARM64 `UnityFramework` link. Its only fatal native blocker was missing `MobileCoreServices` linkage for `UTTypeCreatePreferredIdentifierForTag` and `kUTTagClassFilenameExtension`, both referenced by the retained NativeFilePicker iOS source.
+- The current branch adds a generated-Xcode-project postprocessor that links `MobileCoreServices.framework` only to the `UnityFramework` target. It also packages the Xcode project and logs before propagating any native-build failure so future evidence is not lost to shell `errexit` behavior.
+
+Build #10 should prove that the NativeFilePicker UTI symbols resolve and that the unsigned generic-device Xcode build either succeeds or stops at the next unrelated native incompatibility.
 
 ## Retired GitHub-hosted licensing experiment
 
@@ -100,9 +107,11 @@ Pass conditions:
 
 Pass conditions:
 
-- `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCommandLine` completes.
+- `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` completes.
 - `Build/iOS/Unity-iPhone.xcodeproj` exists.
 - The export uses ARM64, IL2CPP, Metal, landscape orientation, and iOS 15.0 or later.
+
+Build #9 satisfies Gate 2.
 
 ### Gate 3: unsigned native compile
 
@@ -110,6 +119,8 @@ Pass conditions:
 
 - `xcodebuild` compiles the generated project for generic `iphoneos` with signing disabled.
 - The first reproducible native blocker is documented if compilation fails.
+
+Build #9 reached the final ARM64 link and documented the missing NativeFilePicker framework dependency. Gate 3 remains open until the unsigned link completes.
 
 ## Local reproduction fallback
 

@@ -21,7 +21,12 @@ export IOS_DERIVED_DATA_PATH="$build_root/DerivedData-iOS"
 export IOS_XCODE_LOG="$log_dir/ios-xcodebuild.log"
 
 printf 'Running unsigned iphoneos compile from Unity Build Automation post-build hook.\n'
+set +e
 bash "$repo_root/scripts/build-ios-xcode.sh"
+xcode_status=$?
+set -e
+
+printf '%s\n' "$xcode_status" > "$artifact_dir/ios-xcodebuild-exit-code.txt"
 
 rm -f "$artifact_dir/daggerfall-unity-ios-xcode-project.tar.gz"
 tar -czf "$artifact_dir/daggerfall-unity-ios-xcode-project.tar.gz" -C "$build_root" iOS
@@ -36,6 +41,11 @@ if [[ -n "${OUTPUT_DIRECTORY:-}" ]]; then
   printf 'Copied unsigned iOS bootstrap evidence to: %s\n' "$output_extra"
 else
   echo 'Build Automation did not provide OUTPUT_DIRECTORY; evidence remains under Build/uba-ios-bootstrap.' >&2
+fi
+
+if (( xcode_status != 0 )); then
+  echo "Unsigned iphoneos compile failed with exit code $xcode_status; evidence was packaged before stopping." >&2
+  exit "$xcode_status"
 fi
 
 printf 'UBA unsigned iOS bootstrap completed successfully.\n'

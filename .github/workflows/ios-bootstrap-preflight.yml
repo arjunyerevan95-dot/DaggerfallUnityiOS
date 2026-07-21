@@ -39,6 +39,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f Assets/Editor/IOSBuild.cs
+          test -f Assets/Editor/IOSPostProcess.cs
           test -f docs/IOS_BOOTSTRAP.md
           bash -n scripts/export-ios.sh
           bash -n scripts/build-ios-xcode.sh
+          bash -n scripts/uba-prebuild-ios.sh
+          bash -n scripts/uba-postbuild-ios.sh
