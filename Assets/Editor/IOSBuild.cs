@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -59,6 +60,7 @@ namespace DaggerfallUnityIOS.Editor
                 : Path.GetFullPath(configuredExportPath);
 
             ConfigureIOSPlayerSettings();
+            ConfigureAddressablesForPlayerBuild();
 
             string[] scenes = EditorBuildSettings.scenes
                 .Where(scene => scene.enabled && !string.IsNullOrWhiteSpace(scene.path))
@@ -111,11 +113,58 @@ namespace DaggerfallUnityIOS.Editor
                     $"Unity reported success but did not produce the expected Xcode project: {xcodeProject}");
             }
 
+            ValidateExportedAddressables(exportPath);
+
             string evidenceDirectory = Path.Combine(projectRoot, "Build", "uba-ios-bootstrap");
             Directory.CreateDirectory(evidenceDirectory);
             File.WriteAllText(
                 Path.Combine(evidenceDirectory, "ios-export-succeeded.txt"),
                 $"Unity {Application.unityVersion} exported {xcodeProject}{Environment.NewLine}");
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "ios-addressables-succeeded.txt"),
+                $"Addressables runtime data exported under {Path.Combine(exportPath, "Data", "Raw", "aa")}{Environment.NewLine}");
+        }
+
+        private static void ConfigureAddressablesForPlayerBuild()
+        {
+            AddressableAssetSettings settings = AddressableAssetSettingsDefaultObject.Settings;
+            if (settings == null)
+                throw new InvalidOperationException("Addressables settings could not be loaded.");
+
+            settings.BuildAddressablesWithPlayerBuild =
+                AddressableAssetSettings.PlayerBuildOption.BuildWithPlayer;
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
+
+            Debug.Log(
+                $"Addressables configured for player build. " +
+                $"Active data builder index: {settings.ActivePlayerDataBuilderIndex}");
+        }
+
+        private static void ValidateExportedAddressables(string exportPath)
+        {
+            string addressablesRoot = Path.Combine(exportPath, "Data", "Raw", "aa");
+            string runtimeSettings = Path.Combine(addressablesRoot, "settings.json");
+
+            if (!File.Exists(runtimeSettings) || new FileInfo(runtimeSettings).Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"iOS export is missing Addressables runtime settings: {runtimeSettings}");
+            }
+
+            string[] catalogs = Directory.Exists(addressablesRoot)
+                ? Directory.GetFiles(addressablesRoot, "catalog.*", SearchOption.AllDirectories)
+                : Array.Empty<string>();
+
+            if (catalogs.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"iOS export is missing an Addressables content catalog under: {addressablesRoot}");
+            }
+
+            Debug.Log(
+                $"Validated exported Addressables runtime data: {runtimeSettings}; " +
+                $"catalogs={catalogs.Length}");
         }
 
         private static void ConfigureIOSPlayerSettings()
