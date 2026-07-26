@@ -4,7 +4,8 @@
   "references": [],
   "includePlatforms": [],
   "excludePlatforms": [
-    "iOS"
+    "iOS",
+    "macOSStandalone"
   ],
   "allowUnsafeCode": false,
   "overrideReferences": false,
