@@ -19,6 +19,12 @@ namespace DaggerfallUnityIOS.Editor
         private const string BundleIdentifier = "com.arjukstudios.daggerfallunityios";
         private const string MinimumIOSVersion = "15.0";
 
+        [Serializable]
+        private sealed class AddressablesRuntimeSettings
+        {
+            public string m_buildTarget;
+        }
+
         [MenuItem("Daggerfall Unity/Build/Export iOS Xcode Project")]
         public static void BuildFromMenu()
         {
@@ -113,7 +119,7 @@ namespace DaggerfallUnityIOS.Editor
                     $"Unity reported success but did not produce the expected Xcode project: {xcodeProject}");
             }
 
-            ValidateExportedAddressables(exportPath);
+            string addressablesEvidence = ValidateExportedAddressables(exportPath);
 
             string evidenceDirectory = Path.Combine(projectRoot, "Build", "uba-ios-bootstrap");
             Directory.CreateDirectory(evidenceDirectory);
@@ -122,7 +128,7 @@ namespace DaggerfallUnityIOS.Editor
                 $"Unity {Application.unityVersion} exported {xcodeProject}{Environment.NewLine}");
             File.WriteAllText(
                 Path.Combine(evidenceDirectory, "ios-addressables-succeeded.txt"),
-                $"Addressables runtime data exported under {Path.Combine(exportPath, "Data", "Raw", "aa")}{Environment.NewLine}");
+                addressablesEvidence + Environment.NewLine);
         }
 
         private static void ConfigureAddressablesForPlayerBuild()
@@ -141,7 +147,7 @@ namespace DaggerfallUnityIOS.Editor
                 $"Active data builder index: {settings.ActivePlayerDataBuilderIndex}");
         }
 
-        private static void ValidateExportedAddressables(string exportPath)
+        private static string ValidateExportedAddressables(string exportPath)
         {
             string addressablesRoot = Path.Combine(exportPath, "Data", "Raw", "aa");
             string runtimeSettings = Path.Combine(addressablesRoot, "settings.json");
@@ -152,9 +158,24 @@ namespace DaggerfallUnityIOS.Editor
                     $"iOS export is missing Addressables runtime settings: {runtimeSettings}");
             }
 
-            string[] catalogs = Directory.Exists(addressablesRoot)
-                ? Directory.GetFiles(addressablesRoot, "catalog.*", SearchOption.AllDirectories)
-                : Array.Empty<string>();
+            AddressablesRuntimeSettings settings =
+                JsonUtility.FromJson<AddressablesRuntimeSettings>(File.ReadAllText(runtimeSettings));
+            string expectedBuildTarget = BuildTarget.iOS.ToString();
+            if (settings == null || !string.Equals(
+                    settings.m_buildTarget,
+                    expectedBuildTarget,
+                    StringComparison.Ordinal))
+            {
+                string actualBuildTarget = settings?.m_buildTarget ?? "<missing>";
+                throw new InvalidOperationException(
+                    $"iOS export contains Addressables runtime data for '{actualBuildTarget}', " +
+                    $"expected '{expectedBuildTarget}': {runtimeSettings}");
+            }
+
+            string[] catalogs = Directory.GetFiles(
+                addressablesRoot,
+                "catalog.json",
+                SearchOption.AllDirectories);
 
             if (catalogs.Length == 0)
             {
@@ -162,9 +183,26 @@ namespace DaggerfallUnityIOS.Editor
                     $"iOS export is missing an Addressables content catalog under: {addressablesRoot}");
             }
 
+            string targetContentRoot = Path.Combine(addressablesRoot, expectedBuildTarget);
+            string[] bundles = Directory.Exists(targetContentRoot)
+                ? Directory.GetFiles(targetContentRoot, "*.bundle", SearchOption.AllDirectories)
+                : Array.Empty<string>();
+            if (bundles.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"iOS export is missing iOS Addressables bundles under: {targetContentRoot}");
+            }
+
             Debug.Log(
                 $"Validated exported Addressables runtime data: {runtimeSettings}; " +
-                $"catalogs={catalogs.Length}");
+                $"target={settings.m_buildTarget}; catalogs={catalogs.Length}; bundles={bundles.Length}");
+
+            return
+                $"Addressables root: {addressablesRoot}{Environment.NewLine}" +
+                $"Runtime settings: {runtimeSettings}{Environment.NewLine}" +
+                $"Build target: {settings.m_buildTarget}{Environment.NewLine}" +
+                $"Catalog count: {catalogs.Length}{Environment.NewLine}" +
+                $"iOS bundle count: {bundles.Length}";
         }
 
         private static void ConfigureIOSPlayerSettings()
