@@ -100,6 +100,28 @@ xcodebuild -version
 
 addressables_log="$log_dir/ios-addressables-build.log"
 printf 'Building Addressables in a separate Unity process with active target iOS.\n'
+
+# UBA prepares this macOS-carrier checkout with an imported StandaloneOSX
+# Library before invoking the pre-build script. Unity 2022.3 otherwise asks
+# Bee to compile that cached graph before the command-line iOS target can
+# exclude platform-incompatible assemblies. This checkout is disposable, and
+# Unity documents Library as generated project data, so force an unimported
+# project here. The -buildTarget iOS argument below then selects the platform
+# before the clean import.
+case "$repo_root" in
+  ""|"/")
+    echo "Refusing to remove a Unity Library at an unsafe project root: '$repo_root'." >&2
+    exit 8
+    ;;
+esac
+unity_library="$repo_root/Library"
+if [[ -d "$unity_library" ]]; then
+  printf 'Removing UBA carrier Library before the clean iOS import: %s\n' "$unity_library"
+  rm -rf -- "$unity_library"
+else
+  printf 'No existing Unity Library was present before the clean iOS import.\n'
+fi
+
 set +e
 "$unity_editor" \
   -batchmode \
