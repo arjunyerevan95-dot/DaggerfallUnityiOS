@@ -30,11 +30,15 @@ The active experiment uses a Unity Build Automation **macOS Standard** target as
 
 1. Verify that Build Automation provisioned Unity `2022.3.62f3` on macOS.
 2. Verify that the Editor includes iOS Build Support and that Xcode is present.
-3. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to create `Build/iOS/Unity-iPhone.xcodeproj`.
-4. Compile the generated Release project for generic `iphoneos` with signing disabled.
-5. Validate and package the resulting unsigned iOS `.app` and `.ipa` artifacts.
-6. Preserve full evidence under Build Automation `extra_data`.
-7. Copy a compact `DaggerfallUnity-iOS-unsigned-package.zip` beside the primary macOS carrier artifact so it appears in the ordinary dashboard ZIP download.
+3. Before the carrier Unity process starts, launch Unity once with `-buildTarget iOS` and run `DaggerfallUnityIOS.Editor.IOSBuild.BuildIOSAddressablesFromCommandLine`.
+4. Require the prepared Addressables `settings.json`, catalog, and bundles to identify the target as exactly `iOS`.
+5. Pass `IOS_PREBUILT_ADDRESSABLES=1` to the main Unity process through Build Automation's `DEVOPS_ENV`.
+6. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to create `Build/iOS/Unity-iPhone.xcodeproj` while consuming, not rebuilding, the validated iOS Addressables content.
+7. Revalidate the Addressables target and bundles inside the exported player, and require their aggregate SHA-256 fingerprint to match the prepared content.
+8. Compile the generated Release project for generic `iphoneos` with signing disabled.
+9. Validate and package the resulting unsigned iOS `.app` and `.ipa` artifacts.
+10. Preserve full evidence under Build Automation `extra_data`.
+11. Copy a compact `DaggerfallUnity-iOS-unsigned-package.zip` beside the primary macOS carrier artifact so it appears in the ordinary dashboard ZIP download.
 
 This does not turn the macOS carrier artifact into an iOS application. The iOS result is produced separately by the pre-export and post-build hooks.
 
@@ -66,6 +70,18 @@ Do not add Apple signing credentials to this carrier target.
 - The current branch therefore mirrors a compact unsigned iOS package ZIP into the root of `OUTPUT_DIRECTORY`, beside the carrier app, while retaining full logs and Xcode evidence in `extra_data`.
 
 Build #10 completes the original unsigned bootstrap milestone.
+
+## Addressables recovery evidence
+
+Direct inspection of immutable release `ios-build-10-97158031627c` proved that the IPA contains `Data/Raw/aa/settings.json`, `catalog.json`, and three Localization bundles. It also proved that this content is not an iOS Addressables build:
+
+- `settings.json` records `m_buildTarget` as `StandaloneOSX`;
+- the catalog points to `StandaloneOSX` bundle paths;
+- the bundles are stored under `Data/Raw/aa/StandaloneOSX`.
+
+Addressables `1.22.3` constructs its default build input from `EditorUserBuildSettings.activeBuildTarget`. The nested iOS `BuildPipeline.BuildPlayer` call runs inside the macOS carrier Editor, so the previous build-with-player hook built macOS Addressables content and copied it into the iOS player.
+
+The next Build Automation run is a bounded validation of the separate `-buildTarget iOS` Addressables pre-build. It has not passed until both `ios-addressables-prebuild-succeeded.txt` and `ios-addressables-succeeded.txt` record target `iOS` and the same content fingerprint, and the immutable IPA independently contains `Data/Raw/aa/iOS` bundles.
 
 ## Bootstrap gates
 

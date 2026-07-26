@@ -62,5 +62,10 @@ jobs:
           grep -Fq 'Refusing to overwrite existing GitHub release' scripts/publish-ios-github-release.sh
           grep -Fq 'Published release assets do not match the immutable expected set' scripts/publish-ios-github-release.sh
           grep -Fq 'IOSBuildIdentityValues.cs' scripts/uba-prebuild-ios.sh
+          grep -Fq -- '-buildTarget iOS' scripts/uba-prebuild-ios.sh
+          grep -Fq 'IOS_PREBUILT_ADDRESSABLES=1' scripts/uba-prebuild-ios.sh
+          grep -Fq 'BuildIOSAddressablesFromCommandLine' Assets/Editor/IOSBuild.cs
+          grep -Fq 'expectedBuildTarget = BuildTarget.iOS.ToString()' Assets/Editor/IOSBuild.cs
+          grep -Fq 'Prepared and consumed Addressables fingerprints differ' Assets/Editor/IOSBuild.cs
           grep -Fq 'Addressables initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs
           grep -Fq 'Localization initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs

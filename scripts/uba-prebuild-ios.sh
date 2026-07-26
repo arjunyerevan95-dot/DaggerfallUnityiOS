@@ -98,6 +98,39 @@ printf 'Generated iOS build identity source: %s\n' "$identity_source"
 printf 'Using Unity Editor: %s\n' "$unity_editor"
 xcodebuild -version
 
+addressables_log="$log_dir/ios-addressables-build.log"
+printf 'Building Addressables in a separate Unity process with active target iOS.\n'
+set +e
+"$unity_editor" \
+  -batchmode \
+  -nographics \
+  -quit \
+  -projectPath "$repo_root" \
+  -buildTarget iOS \
+  -executeMethod DaggerfallUnityIOS.Editor.IOSBuild.BuildIOSAddressablesFromCommandLine \
+  -logFile "$addressables_log"
+addressables_status=$?
+set -e
+printf '%s\n' "$addressables_status" > "$artifact_dir/ios-addressables-build-exit-code.txt"
+
+if (( addressables_status != 0 )); then
+  echo "Platform-correct iOS Addressables build failed with exit code $addressables_status." >&2
+  tail -n 200 "$addressables_log" >&2 || true
+  exit "$addressables_status"
+fi
+
+addressables_marker="$artifact_dir/ios-addressables-prebuild-succeeded.txt"
+if [[ ! -s "$addressables_marker" ]]; then
+  echo "Unity exited successfully without writing Addressables evidence: $addressables_marker" >&2
+  exit 6
+fi
+
+if [[ -z "${DEVOPS_ENV:-}" ]]; then
+  echo 'Build Automation did not provide DEVOPS_ENV for the main Unity process.' >&2
+  exit 7
+fi
+printf 'IOS_PREBUILT_ADDRESSABLES=1\n' >> "$DEVOPS_ENV"
+
 cat > "$artifact_dir/preflight-environment.txt" <<EOF
 Unity version: $unity_version
 Unity executable: $unity_editor
@@ -105,6 +138,8 @@ Builder OS: ${BUILDER_OS:-unknown}
 Xcode: $(xcodebuild -version | tr '\n' ' ')
 Source commit: $source_commit
 UBA build number: $build_number
+Addressables active target: iOS
+Addressables build exit code: $addressables_status
 EOF
 
-printf 'UBA pre-build checks completed. The configured Unity pre-export method will perform the iOS Xcode export.\n'
+printf 'UBA pre-build checks and iOS Addressables build completed. The configured Unity pre-export method will perform the iOS Xcode export.\n'
