@@ -85,7 +85,7 @@ if (( delivery_status == 0 )); then
   export GITHUB_RELEASE_CHECKSUMS="$artifact_dir/unsigned-ios-package/SHA256SUMS"
   export GITHUB_RELEASE_MANIFEST="$artifact_dir/unsigned-ios-package/unsigned-package-manifest.txt"
 
-  printf 'Publishing the unsigned iOS package to the rolling GitHub prerelease.\n'
+  printf 'Publishing the unsigned iOS package to a new immutable GitHub prerelease.\n'
   set +e
   bash "$repo_root/scripts/publish-ios-github-release.sh"
   release_status=$?

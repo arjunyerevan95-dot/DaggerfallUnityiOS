@@ -127,38 +127,60 @@ release_response="$work_dir/release.json"
 release_payload="$work_dir/release-payload.json"
 write_release_payload "$release_payload"
 
+tag_response="$work_dir/tag.json"
+status="$(api_request GET "$api_root/git/ref/tags/$release_tag" "$tag_response")"
+if [[ "$status" == "200" ]]; then
+  echo "Refusing to overwrite existing Git tag: $release_tag" >&2
+  cat "$tag_response" >&2
+  exit 3
+elif [[ "$status" != "404" ]]; then
+  echo "Git tag lookup failed with HTTP $status." >&2
+  cat "$tag_response" >&2
+  exit 4
+fi
+
 status="$(api_request GET "$api_root/releases/tags/$release_tag" "$release_response")"
-if [[ "$status" == "404" ]]; then
-  status="$(api_request POST "$api_root/releases" "$release_response" "$release_payload")"
-  if [[ "$status" != "201" ]]; then
-    echo "GitHub release creation failed with HTTP $status." >&2
-    cat "$release_response" >&2
-    exit 3
-  fi
-elif [[ "$status" == "200" ]]; then
-  release_id="$(json_value "$release_response" id)"
-  status="$(api_request PATCH "$api_root/releases/$release_id" "$release_response" "$release_payload")"
-  if [[ "$status" != "200" ]]; then
-    echo "GitHub release update failed with HTTP $status." >&2
-    cat "$release_response" >&2
-    exit 4
-  fi
-else
-  echo "GitHub release lookup failed with HTTP $status." >&2
+if [[ "$status" == "200" ]]; then
+  echo "Refusing to overwrite existing GitHub release: $release_tag" >&2
   cat "$release_response" >&2
   exit 5
+elif [[ "$status" != "404" ]]; then
+  echo "GitHub release lookup failed with HTTP $status." >&2
+  cat "$release_response" >&2
+  exit 6
 fi
+
+status="$(api_request POST "$api_root/releases" "$release_response" "$release_payload")"
+if [[ "$status" != "201" ]]; then
+  echo "GitHub release creation failed with HTTP $status." >&2
+  cat "$release_response" >&2
+  exit 7
+fi
+
+status="$(api_request GET "$api_root/git/ref/tags/$release_tag" "$tag_response")"
+if [[ "$status" != "200" ]]; then
+  echo "Created release did not produce the expected Git tag (HTTP $status)." >&2
+  cat "$tag_response" >&2
+  exit 8
+fi
+
+python3 - "$tag_response" "$source_commit" <<'PY'
+import json
+import sys
+
+path, expected_commit = sys.argv[1:]
+with open(path, "r", encoding="utf-8") as handle:
+    tag = json.load(handle)
+target = tag.get("object", {})
+if target.get("type") != "commit" or target.get("sha") != expected_commit:
+    raise SystemExit(
+        "Created Git tag does not point directly to the expected commit: "
+        f"expected={expected_commit!r}, actual={target!r}"
+    )
+PY
 
 release_id="$(json_value "$release_response" id)"
 release_url="$(json_value "$release_response" html_url)"
-
-assets_response="$work_dir/assets.json"
-status="$(api_request GET "$api_root/releases/$release_id/assets?per_page=100" "$assets_response")"
-if [[ "$status" != "200" ]]; then
-  echo "GitHub release asset listing failed with HTTP $status." >&2
-  cat "$assets_response" >&2
-  exit 6
-fi
 
 ipa_asset="$work_dir/$ipa_name"
 evidence_asset="$work_dir/$evidence_name"
@@ -168,27 +190,6 @@ cp "$GITHUB_RELEASE_IPA" "$ipa_asset"
 cp "$GITHUB_RELEASE_EVIDENCE" "$evidence_asset"
 cp "$GITHUB_RELEASE_CHECKSUMS" "$checksums_asset"
 cp "$GITHUB_RELEASE_MANIFEST" "$manifest_asset"
-
-python3 - "$assets_response" > "$work_dir/delete-assets.tsv" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as handle:
-    assets = json.load(handle)
-for asset in assets:
-    print(f"{asset['id']}\t{asset['name']}")
-PY
-
-while IFS=$'\t' read -r asset_id asset_name; do
-  [[ -z "$asset_id" ]] && continue
-  delete_response="$work_dir/delete-$asset_id.json"
-  status="$(api_request DELETE "$api_root/releases/assets/$asset_id" "$delete_response")"
-  if [[ "$status" != "204" ]]; then
-    echo "Could not delete existing release asset $asset_name (HTTP $status)." >&2
-    cat "$delete_response" >&2
-    exit 7
-  fi
-done < "$work_dir/delete-assets.tsv"
 
 upload_asset() {
   local file="$1"
@@ -229,6 +230,34 @@ upload_asset "$ipa_asset"
 upload_asset "$evidence_asset"
 upload_asset "$checksums_asset"
 upload_asset "$manifest_asset"
+
+assets_response="$work_dir/assets.json"
+status="$(api_request GET "$api_root/releases/$release_id/assets?per_page=100" "$assets_response")"
+if [[ "$status" != "200" ]]; then
+  echo "GitHub release asset verification failed with HTTP $status." >&2
+  cat "$assets_response" >&2
+  exit 9
+fi
+
+python3 - \
+  "$assets_response" \
+  "$ipa_name" \
+  "$evidence_name" \
+  "$checksums_name" \
+  "$manifest_name" <<'PY'
+import json
+import sys
+
+path, *expected = sys.argv[1:]
+with open(path, "r", encoding="utf-8") as handle:
+    assets = json.load(handle)
+actual = [asset["name"] for asset in assets]
+if sorted(actual) != sorted(expected):
+    raise SystemExit(
+        "Published release assets do not match the immutable expected set: "
+        f"expected={sorted(expected)!r}, actual={sorted(actual)!r}"
+    )
+PY
 
 result_dir="$(dirname "$GITHUB_RELEASE_MANIFEST")"
 direct_ipa_url="https://github.com/$repository/releases/download/$release_tag/$ipa_name"

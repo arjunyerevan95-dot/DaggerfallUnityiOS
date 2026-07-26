@@ -106,6 +106,7 @@ if ! /usr/bin/unzip -Z1 "$ipa_path" | /usr/bin/grep -Fxq "Payload/$app_name/Info
 fi
 
 source_commit="${GIT_COMMIT:-$(git -C "$repo_root" rev-parse HEAD)}"
+unity_build_number="${BUILD_NUMBER:-${CLOUD_BUILD_NUMBER:-${UNITY_CLOUD_BUILD_NUMBER:-${BUILD_ID:-unknown}}}}"
 binary_description="$(/usr/bin/file "$app_binary")"
 xcode_version="$(xcodebuild -version | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 
@@ -113,6 +114,7 @@ cat > "$manifest_path" <<EOF_MANIFEST
 artifact_kind=unsigned-ios-package
 source_commit=$source_commit
 unity_version=${UNITY_VERSION:-2022.3.62f3}
+unity_build_number=$unity_build_number
 xcode=$xcode_version
 app=$app_name
 bundle_identifier=$bundle_id
