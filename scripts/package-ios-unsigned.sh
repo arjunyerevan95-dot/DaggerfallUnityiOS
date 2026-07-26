@@ -40,6 +40,7 @@ plist_value() {
 
 bundle_id="$(plist_value CFBundleIdentifier)"
 minimum_os="$(plist_value MinimumOSVersion)"
+app_build_number="$(plist_value CFBundleVersion)"
 executable_name="$(plist_value CFBundleExecutable)"
 supported_platform="$(plist_value CFBundleSupportedPlatforms:0)"
 app_binary="$app_path/$executable_name"
@@ -57,6 +58,17 @@ fi
 if [[ "$supported_platform" != "$expected_platform" ]]; then
   echo "Unexpected supported platform: $supported_platform (expected $expected_platform)." >&2
   exit 6
+fi
+
+unity_build_number="${BUILD_NUMBER:-${CLOUD_BUILD_NUMBER:-${UNITY_CLOUD_BUILD_NUMBER:-${BUILD_ID:-unknown}}}}"
+if [[ ! "$unity_build_number" =~ ^[0-9]+([.][0-9]+){0,2}$ ]]; then
+  echo "Unity build number is missing or is not a valid CFBundleVersion: $unity_build_number" >&2
+  exit 13
+fi
+
+if [[ "$app_build_number" != "$unity_build_number" ]]; then
+  echo "Unexpected CFBundleVersion: $app_build_number (expected Unity build $unity_build_number)." >&2
+  exit 12
 fi
 
 if [[ ! -f "$app_binary" ]]; then
@@ -106,7 +118,6 @@ if ! /usr/bin/unzip -Z1 "$ipa_path" | /usr/bin/grep -Fxq "Payload/$app_name/Info
 fi
 
 source_commit="${GIT_COMMIT:-$(git -C "$repo_root" rev-parse HEAD)}"
-unity_build_number="${BUILD_NUMBER:-${CLOUD_BUILD_NUMBER:-${UNITY_CLOUD_BUILD_NUMBER:-${BUILD_ID:-unknown}}}}"
 binary_description="$(/usr/bin/file "$app_binary")"
 xcode_version="$(xcodebuild -version | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 
@@ -115,6 +126,7 @@ artifact_kind=unsigned-ios-package
 source_commit=$source_commit
 unity_version=${UNITY_VERSION:-2022.3.62f3}
 unity_build_number=$unity_build_number
+app_build_number=$app_build_number
 xcode=$xcode_version
 app=$app_name
 bundle_identifier=$bundle_id

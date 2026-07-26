@@ -216,6 +216,17 @@ namespace DaggerfallUnityIOS.Editor
             PlayerSettings.iOS.requiresPersistentWiFi = false;
             PlayerSettings.statusBarHidden = true;
 
+            string buildNumber =
+                Environment.GetEnvironmentVariable("BUILD_NUMBER") ??
+                Environment.GetEnvironmentVariable("CLOUD_BUILD_NUMBER") ??
+                Environment.GetEnvironmentVariable("UNITY_CLOUD_BUILD_NUMBER") ??
+                Environment.GetEnvironmentVariable("BUILD_ID");
+            if (!string.IsNullOrWhiteSpace(buildNumber))
+            {
+                PlayerSettings.iOS.buildNumber = buildNumber;
+                Debug.Log("Configured iOS CFBundleVersion from Unity build number: " + buildNumber);
+            }
+
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
             PlayerSettings.allowedAutorotateToPortrait = false;
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;

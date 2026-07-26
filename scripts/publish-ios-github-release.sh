@@ -6,6 +6,11 @@ repository="${GITHUB_RELEASE_REPOSITORY:-arjunyerevan95-dot/DaggerfallUnityiOS}"
 source_commit="${GIT_COMMIT:-$(git -C "$repo_root" rev-parse HEAD)}"
 short_commit="${source_commit:0:12}"
 raw_build_number="${BUILD_NUMBER:-${CLOUD_BUILD_NUMBER:-${UNITY_CLOUD_BUILD_NUMBER:-${BUILD_ID:-unknown}}}}"
+if [[ ! "$raw_build_number" =~ ^[0-9]+([.][0-9]+){0,2}$ ]]; then
+  echo "Unity build number is missing or is not a valid release identity: $raw_build_number" >&2
+  exit 2
+fi
+
 safe_build_number="$(printf '%s' "$raw_build_number" | tr -c '[:alnum:]._- ' '-' | tr ' ' '-')"
 [[ -n "$safe_build_number" ]] || safe_build_number="unknown"
 release_tag="${GITHUB_RELEASE_TAG:-ios-build-${safe_build_number}-${short_commit}}"

@@ -21,6 +21,21 @@ This checkpoint adds an iOS-only first-run runtime layer that:
 
 No commercial game data is committed or bundled.
 
+## Earliest runtime evidence
+
+Before the first scene loads, the runtime appends the following evidence to `DaggerfallUnity-iOS.log`:
+
+- full source commit and Unity Build Automation build number;
+- Unity version;
+- `StreamingAssets`, `Data/Raw`, and Addressables runtime paths;
+- `settings.json` and catalog file presence;
+- Addressables initialization status and exception;
+- loaded catalog locator identifiers and catalog locations;
+- Localization settings presence, initialization status, selected locale, and locale count.
+
+The build identity values are generated separately from the diagnostics implementation so the pre-build script cannot overwrite diagnostic code.
+The same Unity build number is written to the app's `CFBundleVersion`; packaging fails if the value differs from the release identity.
+
 ## Accepted archive layouts
 
 The importer supports the same layouts as the Android fork, including:

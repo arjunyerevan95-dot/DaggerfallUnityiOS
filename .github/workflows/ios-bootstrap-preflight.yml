@@ -40,6 +40,8 @@ jobs:
           set -euo pipefail
           test -f Assets/Editor/IOSBuild.cs
           test -f Assets/Editor/IOSPostProcess.cs
+          test -f Assets/IOS/Scripts/IOSBuildIdentity.cs
+          test -f Assets/IOS/Scripts/IOSBuildIdentityValues.cs
           test -f Assets/IOS/Scripts/IOSFirstRunRuntime.cs
           test -f docs/IOS_BOOTSTRAP.md
           test -f docs/IOS_RUNTIME_IMPORT.md
@@ -50,3 +52,15 @@ jobs:
           bash -n scripts/publish-ios-github-release.sh
           bash -n scripts/uba-prebuild-ios.sh
           bash -n scripts/uba-postbuild-ios.sh
+
+      - name: Verify immutable release and runtime identity gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'api_request (PATCH|DELETE)' scripts/publish-ios-github-release.sh
+          grep -Fq 'Refusing to overwrite existing Git tag' scripts/publish-ios-github-release.sh
+          grep -Fq 'Refusing to overwrite existing GitHub release' scripts/publish-ios-github-release.sh
+          grep -Fq 'Published release assets do not match the immutable expected set' scripts/publish-ios-github-release.sh
+          grep -Fq 'IOSBuildIdentityValues.cs' scripts/uba-prebuild-ios.sh
+          grep -Fq 'Addressables initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs
+          grep -Fq 'Localization initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs
