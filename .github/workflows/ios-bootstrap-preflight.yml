@@ -63,9 +63,13 @@ jobs:
           grep -Fq 'Published release assets do not match the immutable expected set' scripts/publish-ios-github-release.sh
           grep -Fq 'IOSBuildIdentityValues.cs' scripts/uba-prebuild-ios.sh
           grep -Fq -- '-buildTarget iOS' scripts/uba-prebuild-ios.sh
-          grep -Fq 'IOS_PREBUILT_ADDRESSABLES=1' scripts/uba-prebuild-ios.sh
+          grep -Fq 'addressables-handoff.json' scripts/uba-prebuild-ios.sh
+          ! grep -Fq 'IOS_PREBUILT_ADDRESSABLES' scripts/uba-prebuild-ios.sh Assets/Editor/IOSBuild.cs
+          ! grep -Fq 'DEVOPS_ENV' scripts/uba-prebuild-ios.sh Assets/Editor/IOSBuild.cs
           grep -Fq 'BuildIOSAddressablesFromCommandLine' Assets/Editor/IOSBuild.cs
+          grep -Fq 'SwitchActiveBuildTarget(' Assets/Editor/IOSBuild.cs
           grep -Fq 'expectedBuildTarget = BuildTarget.iOS.ToString()' Assets/Editor/IOSBuild.cs
-          grep -Fq 'Prepared and consumed Addressables fingerprints differ' Assets/Editor/IOSBuild.cs
+          grep -Fq 'Addressables handoff gate 14 failed: fingerprint mismatch' Assets/Editor/IOSBuild.cs
+          grep -Fq 'Prepared and exported Addressables fingerprint mismatch' Assets/Editor/IOSBuild.cs
           grep -Fq 'Addressables initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs
           grep -Fq 'Localization initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs

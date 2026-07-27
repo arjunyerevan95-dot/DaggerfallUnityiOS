@@ -32,7 +32,7 @@ The active experiment uses a Unity Build Automation **macOS Standard** target as
 2. Verify that the Editor includes iOS Build Support and that Xcode is present.
 3. Before the carrier Unity process starts, launch Unity once with `-buildTarget iOS` and run `DaggerfallUnityIOS.Editor.IOSBuild.BuildIOSAddressablesFromCommandLine`.
 4. Require the prepared Addressables `settings.json`, catalog, and bundles to identify the target as exactly `iOS`.
-5. Pass `IOS_PREBUILT_ADDRESSABLES=1` to the main Unity process through Build Automation's `DEVOPS_ENV`.
+5. Atomically write `Build/uba-ios-bootstrap/addressables-handoff.json` only after validating the prepared iOS content, source commit, Unity version, and active Addressables profile.
 6. Run `DaggerfallUnityIOS.Editor.IOSBuild.BuildFromCloudPreExport` to create `Build/iOS/Unity-iPhone.xcodeproj` while consuming, not rebuilding, the validated iOS Addressables content.
 7. Revalidate the Addressables target and bundles inside the exported player, and require their aggregate SHA-256 fingerprint to match the prepared content.
 8. Compile the generated Release project for generic `iphoneos` with signing disabled.
@@ -81,7 +81,7 @@ Direct inspection of immutable release `ios-build-10-97158031627c` proved that t
 
 Addressables `1.22.3` constructs its default build input from `EditorUserBuildSettings.activeBuildTarget`. The nested iOS `BuildPipeline.BuildPlayer` call runs inside the macOS carrier Editor, so the previous build-with-player hook built macOS Addressables content and copied it into the iOS player.
 
-The next Build Automation run is a bounded validation of the separate `-buildTarget iOS` Addressables pre-build. It has not passed until both `ios-addressables-prebuild-succeeded.txt` and `ios-addressables-succeeded.txt` record target `iOS` and the same content fingerprint, and the immutable IPA independently contains `Data/Raw/aa/iOS` bundles.
+The next Build Automation run is a bounded validation of the separate `-buildTarget iOS` Addressables pre-build. It has not passed until `addressables-handoff.json` and `ios-addressables-succeeded.txt` record target `iOS` and the same content fingerprint, and the immutable IPA independently contains `Data/Raw/aa/iOS` bundles.
 
 ## Bootstrap gates
 

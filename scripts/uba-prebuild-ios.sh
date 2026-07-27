@@ -10,6 +10,7 @@ unity_version="${unity_version_raw//_/.}"
 source_commit="${GIT_COMMIT:-$(git -C "$repo_root" rev-parse HEAD)}"
 build_number="${BUILD_NUMBER:-${CLOUD_BUILD_NUMBER:-${UNITY_CLOUD_BUILD_NUMBER:-${BUILD_ID:-unknown}}}}"
 identity_source="$repo_root/Assets/IOS/Scripts/IOSBuildIdentityValues.cs"
+addressables_handoff="$artifact_dir/addressables-handoff.json"
 
 if [[ ! "$build_number" =~ ^[0-9]+([.][0-9]+){0,2}$ ]]; then
   echo "Unity build number is missing or is not a valid CFBundleVersion: $build_number" >&2
@@ -99,6 +100,10 @@ printf 'Using Unity Editor: %s\n' "$unity_editor"
 xcodebuild -version
 
 addressables_log="$log_dir/ios-addressables-build.log"
+rm -f -- \
+  "$addressables_handoff" \
+  "$addressables_handoff.tmp" \
+  "$artifact_dir/ios-addressables-prebuild-succeeded.txt"
 printf 'Building Addressables in a separate Unity process with active target iOS.\n'
 
 # Unity compiles project assemblies for the Editor before it can invoke the
@@ -158,17 +163,10 @@ if (( addressables_status != 0 )); then
   exit "$addressables_status"
 fi
 
-addressables_marker="$artifact_dir/ios-addressables-prebuild-succeeded.txt"
-if [[ ! -s "$addressables_marker" ]]; then
-  echo "Unity exited successfully without writing Addressables evidence: $addressables_marker" >&2
+if [[ ! -s "$addressables_handoff" ]]; then
+  echo "Unity exited successfully without writing the Addressables handoff: $addressables_handoff" >&2
   exit 6
 fi
-
-if [[ -z "${DEVOPS_ENV:-}" ]]; then
-  echo 'Build Automation did not provide DEVOPS_ENV for the main Unity process.' >&2
-  exit 7
-fi
-printf 'IOS_PREBUILT_ADDRESSABLES=1\n' >> "$DEVOPS_ENV"
 
 cat > "$artifact_dir/preflight-environment.txt" <<EOF
 Unity version: $unity_version
@@ -179,6 +177,7 @@ Source commit: $source_commit
 UBA build number: $build_number
 Addressables active target: iOS
 Addressables build exit code: $addressables_status
+Addressables handoff: Build/uba-ios-bootstrap/addressables-handoff.json
 EOF
 
 printf 'UBA pre-build checks and iOS Addressables build completed. The configured Unity pre-export method will perform the iOS Xcode export.\n'
