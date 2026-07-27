@@ -1,0 +1,75 @@
+name: iOS bootstrap preflight
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance-and-scripts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned mobile baseline ancestry
+        shell: bash
+        env:
+          PINNED_SHA: 0fa65294523a132a0e5389d125f58d6566a1e815
+        run: |
+          set -euo pipefail
+          git cat-file -e "${PINNED_SHA}^{commit}"
+          git merge-base --is-ancestor "$PINNED_SHA" HEAD
+
+      - name: Verify pinned Unity editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fqx 'm_EditorVersion: 2022.3.62f3' ProjectSettings/ProjectVersion.txt
+
+      - name: Verify bootstrap files and shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Assets/Editor/IOSBuild.cs
+          test -f Assets/Editor/IOSPostProcess.cs
+          test -f Assets/IOS/Scripts/IOSBuildIdentity.cs
+          test -f Assets/IOS/Scripts/IOSBuildIdentityValues.cs
+          test -f Assets/IOS/Scripts/IOSFirstRunRuntime.cs
+          test -f docs/IOS_BOOTSTRAP.md
+          test -f docs/IOS_RUNTIME_IMPORT.md
+          test -f docs/IOS_GITHUB_RELEASES.md
+          bash -n scripts/export-ios.sh
+          bash -n scripts/build-ios-xcode.sh
+          bash -n scripts/package-ios-unsigned.sh
+          bash -n scripts/publish-ios-github-release.sh
+          bash -n scripts/uba-prebuild-ios.sh
+          bash -n scripts/uba-postbuild-ios.sh
+
+      - name: Verify immutable release and runtime identity gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'api_request (PATCH|DELETE)' scripts/publish-ios-github-release.sh
+          grep -Fq 'Refusing to overwrite existing Git tag' scripts/publish-ios-github-release.sh
+          grep -Fq 'Refusing to overwrite existing GitHub release' scripts/publish-ios-github-release.sh
+          grep -Fq 'Published release assets do not match the immutable expected set' scripts/publish-ios-github-release.sh
+          grep -Fq 'IOSBuildIdentityValues.cs' scripts/uba-prebuild-ios.sh
+          grep -Fq -- '-buildTarget iOS' scripts/uba-prebuild-ios.sh
+          grep -Fq 'addressables-handoff.json' scripts/uba-prebuild-ios.sh
+          ! grep -Fq 'IOS_PREBUILT_ADDRESSABLES' scripts/uba-prebuild-ios.sh Assets/Editor/IOSBuild.cs
+          ! grep -Fq 'DEVOPS_ENV' scripts/uba-prebuild-ios.sh Assets/Editor/IOSBuild.cs
+          grep -Fq 'BuildIOSAddressablesFromCommandLine' Assets/Editor/IOSBuild.cs
+          grep -Fq 'SwitchActiveBuildTarget(' Assets/Editor/IOSBuild.cs
+          grep -Fq 'expectedBuildTarget = BuildTarget.iOS.ToString()' Assets/Editor/IOSBuild.cs
+          grep -Fq 'Addressables handoff gate 14 failed: fingerprint mismatch' Assets/Editor/IOSBuild.cs
+          grep -Fq 'Prepared and exported Addressables fingerprint mismatch' Assets/Editor/IOSBuild.cs
+          grep -Fq 'Addressables initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs
+          grep -Fq 'Localization initialization:' Assets/IOS/Scripts/IOSBuildIdentity.cs
