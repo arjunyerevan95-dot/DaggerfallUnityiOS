@@ -101,26 +101,41 @@ xcodebuild -version
 addressables_log="$log_dir/ios-addressables-build.log"
 printf 'Building Addressables in a separate Unity process with active target iOS.\n'
 
-# UBA prepares this macOS-carrier checkout with an imported StandaloneOSX
-# Library before invoking the pre-build script. Unity 2022.3 otherwise asks
-# Bee to compile that cached graph before the command-line iOS target can
-# exclude platform-incompatible assemblies. This checkout is disposable, and
-# Unity documents Library as generated project data, so force an unimported
-# project here. The -buildTarget iOS argument below then selects the platform
-# before the clean import.
-case "$repo_root" in
-  ""|"/")
-    echo "Refusing to remove a Unity Library at an unsafe project root: '$repo_root'." >&2
-    exit 8
-    ;;
-esac
-unity_library="$repo_root/Library"
-if [[ -d "$unity_library" ]]; then
-  printf 'Removing UBA carrier Library before the clean iOS import: %s\n' "$unity_library"
-  rm -rf -- "$unity_library"
-else
-  printf 'No existing Unity Library was present before the clean iOS import.\n'
-fi
+# Unity compiles project assemblies for the Editor before it can invoke the
+# Addressables method. The runtime compiler depends on System.CodeDom, which is
+# unavailable to this raw Editor process, but iOS already supplies the
+# RuntimeCSharpCompilerIOSStub API used by the rest of the project. Exclude the
+# runtime implementation from this one Editor import, then restore the exact
+# tracked asmdef before UBA starts its normal carrier process.
+runtime_compiler_asmdef="$repo_root/Assets/Game/Addons/CSharpCompiler/DaggerfallUnity.RuntimeCSharpCompiler.asmdef"
+runtime_compiler_backup="$artifact_dir/DaggerfallUnity.RuntimeCSharpCompiler.asmdef.original"
+cp -- "$runtime_compiler_asmdef" "$runtime_compiler_backup"
+
+restore_runtime_compiler_asmdef() {
+  local restore_status=$?
+  if [[ -f "$runtime_compiler_backup" ]]; then
+    cp -- "$runtime_compiler_backup" "$runtime_compiler_asmdef"
+    rm -f -- "$runtime_compiler_backup"
+  fi
+  return "$restore_status"
+}
+trap restore_runtime_compiler_asmdef EXIT
+
+python3 - "$runtime_compiler_asmdef" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    assembly_definition = json.load(handle)
+excluded = assembly_definition.setdefault("excludePlatforms", [])
+if "Editor" not in excluded:
+    excluded.append("Editor")
+with open(path, "w", encoding="utf-8", newline="\n") as handle:
+    json.dump(assembly_definition, handle, indent=2)
+    handle.write("\n")
+PY
+printf 'Temporarily excluded the runtime C# compiler from the iOS Editor import.\n'
 
 set +e
 "$unity_editor" \
@@ -133,6 +148,8 @@ set +e
   -logFile "$addressables_log"
 addressables_status=$?
 set -e
+restore_runtime_compiler_asmdef
+trap - EXIT
 printf '%s\n' "$addressables_status" > "$artifact_dir/ios-addressables-build-exit-code.txt"
 
 if (( addressables_status != 0 )); then
